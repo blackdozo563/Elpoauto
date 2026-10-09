@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "scenes": [
+    { "file": "001.png", "start": 0, "end": 10, "text": "Première intention de la prière" },
+    { "file": "002.mp4", "start": 10, "end": 20, "text": "Deuxième intention" },
+    { "file": "003.png", "start": 20, "end": 30, "text": "Clôture" }
+  ]
+}
