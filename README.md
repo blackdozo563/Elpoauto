@@ -38,7 +38,7 @@ Le DMG autonome utilise Electron 32.3.3 installé depuis npm. L'ancien paquet ZI
 
 ## Développement
 
-Node.js 22+ : `npm ci`, puis `npm test` (82 tests, dont un rendu FFmpeg réel si FFmpeg est installé). Aucune dépendance npm d'exécution ; Electron et electron-builder sont des dépendances de développement verrouillées par package-lock.json. `npm start` lance Electron installé localement.
+Node.js 22+ : `npm ci`, puis `npm test` (90 tests, dont un rendu FFmpeg réel si FFmpeg est installé). Aucune dépendance npm d'exécution ; Electron et electron-builder sont des dépendances de développement verrouillées par package-lock.json. `npm start` lance Electron installé localement.
 - `lib/engine.js` : analyse, plan, construction du draft (mouvements, transitions, effets, filtres, musique), lot.
 - `lib/render.js` + `lib/export-queue.js` : export ELPO (plan lu depuis le draft, commandes FFmpeg pures et testées, file).
 - `lib/capcut-pilot.js` + `lib/mac-automation.js` : pilotage de CapCut (séquence testable, actions macOS via osascript/CoreGraphics).
