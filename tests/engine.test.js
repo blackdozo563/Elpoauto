@@ -37,3 +37,13 @@ test('ne réutilise pas un aperçu déjà consommé',()=>withFixture({},f=>{cons
 test('écriture refusée si CapCut ouvert',()=>withFixture({},f=>{const e=new Engine({root:f.root,backupDir:f.backupDir,guard:()=>{throw Object.assign(new Error('CapCut ouvert'),{code:'CAPCUT_OPEN'})}});const r=e.preview(f.project,{});error(()=>e.commit(r.token),'CAPCUT_OPEN');assert.equal(readJson(f.draftFile).value.duration,0);}));
 test('projet lié ou extérieur refusé',()=>withFixture({},f=>{const link=path.join(f.root,'linked');fs.symlinkSync(f.project,link);error(()=>loadProject(f.root,link),'PROJECT_PATH');error(()=>loadProject(f.root,f.temp),'PROJECT_PATH');}));
 test('plateforme non Mac : statut inconnu bloquant',()=>error(()=>capcutState('linux'),'PLATFORM'));
+test('alias du dossier parent accepté ; lien du projet toujours refusé',()=>withFixture({},f=>{
+  const alias=path.join(f.temp,'projects-alias');fs.symlinkSync(f.root,alias);
+  const aliasProject=path.join(alias,path.basename(f.project));
+  const e=new Engine({root:alias,backupDir:f.backupDir,guard:()=>{}});
+  assert.equal(e.inspect(aliasProject).path,f.project);
+  const preview=e.preview(aliasProject,{});e.commit(preview.token);
+  assert.equal(readJson(f.draftFile).value.duration,30000000);
+  const linked=path.join(f.root,'linked');fs.symlinkSync(f.project,linked);
+  error(()=>loadProject(alias,linked),'PROJECT_PATH');
+}));

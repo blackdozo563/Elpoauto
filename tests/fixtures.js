@@ -3,7 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 export function fixture({ mac = false, mirror = false, visuals = ['scene-1.png', 'scene-2.png'], audioCount = 1, totalUs = 30000000 } = {}) {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'elpo-test-'));
+  // macOS exposes /var as an alias of /private/var. Fixtures must use the actual
+  // root so assertions compare the same paths returned by the production engine.
+  const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'elpo-test-')));
   const root = path.join(temp, 'projects'), project = path.join(root, 'example'), media = path.join(temp, 'media'), backupDir = path.join(temp, 'backups');
   fs.mkdirSync(project, { recursive: true }); fs.mkdirSync(media);
   const id = randomUUID();

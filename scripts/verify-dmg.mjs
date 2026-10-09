@@ -86,14 +86,17 @@ try {
     result = await evaluate(`(async () => {
       if (document.readyState !== 'complete' || !window.elpo?.status) return null;
       const status = await window.elpo.status();
-      return { ready: document.readyState, buttons: document.querySelectorAll('button').length, status };
+      return { ready: document.readyState, buttons: document.querySelectorAll('button').length,
+        booting: document.body.classList.contains('booting'), version: document.querySelector('#version')?.textContent, status };
     })()`);
     assert(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
-    if (result.result?.value) break;
+    if (result.result?.value && !result.result.value.booting) break;
     await delay(250);
   }
   const state = result.result?.value;
   assert(state && state.buttons > 20, 'Packaged interface did not render');
+  assert.equal(state.booting, false, 'Renderer startup did not complete');
+  assert(state.version.includes(expected.version), 'Renderer did not receive the application version');
   assert.equal(state.status.ok, true, 'Preload to main IPC failed');
   assert.equal(state.status.result.version, expected.version);
   assert.equal(state.status.result.platform, 'darwin');
