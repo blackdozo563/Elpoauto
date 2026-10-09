@@ -368,7 +368,7 @@ td:last-child { max-width: 220px; }
 .pick .path { flex: 1; min-width: 0; height: 32px; line-height: 32px; padding: 0 10px; border-radius: 8px; background: var(--sunk); border: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dim-when-off { transition: opacity .2s; }
 .dim-when-off.off { opacity: .35; pointer-events: none; }
-.engine-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+.engine-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
 .engine-cards button { text-align: left; padding: 13px 14px; border-radius: 11px; border: 1px solid var(--line); background: var(--sunk); display: grid; gap: 4px; transition: border-color .15s, background .15s; }
 .engine-cards strong { font-size: 13px; }
 .engine-cards span { font-size: 11.5px; color: var(--faint); line-height: 1.45; }

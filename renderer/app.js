@@ -21,7 +21,7 @@ let project = null, report = null, currentStep = 'media', currentPage = 'library
 let scenesFile = null, srtFile = null, transitions = [], transitionIds = new Set(), effectIds = new Set(), filterIds = new Set(), preferences = {};
 let syncPlan = null, syncPage = 0, mediaUrls = {}, playback = null, activeClip = null, raf = 0, playGeneration = 0;
 let projects = [], selected = new Set(), libraryFilter = 'all', status = {}, styles = {}, favorites = { transitions: [], effects: [], filters: [] };
-let library = { transitions: [], effects: [], filters: [] }, fxKind = 'transitions', fxShow = null, batchEngine = 'elpo', singleEngine = 'elpo';
+let library = { transitions: [], effects: [], filters: [] }, fxKind = 'transitions', fxShow = null, batchEngine = 'auto', singleEngine = 'elpo';
 let exportJobs = [], pilotJobs = [], pilotSettings = {}, ffmpeg = null, focusScene = -1, ribbonZoom = 1, waveCache = new Map(), built = false;
 const pageSize = 12;
 const PAGES = { library: 'Projets', build: 'Montage complet', batch: 'Production en lot', fx: 'Bibliothèque', vault: 'Sauvegardes', settings: 'Réglages' };
@@ -600,12 +600,12 @@ function applyExportSettings(s = {}) {
   if (s.hardware !== undefined) $('exHardware').checked = !!s.hardware; if (s.subtitles !== undefined) $('exSubtitles').checked = !!s.subtitles;
 }
 async function saveExportSettings() { await unwrap(api.exportSettings(exportSettings())); }
-async function startExport(list, engineName, test = false) {
+async function startExport(list, engineName, test = false, { confirmed = false } = {}) {
   if (!list.length) throw new Error('Aucun projet à exporter.');
   if (engineName === 'capcut') {
     if (!pilotSettings.tile) { go('settings'); throw new Error('Calibre d’abord la première vignette de l’accueil CapCut (Réglages, Pilotage de CapCut).'); }
     if (!pilotSettings.exportDir) { go('settings'); throw new Error('Indique le dossier d’export utilisé par CapCut (Réglages).'); }
-    if (!(await ask(test ? 'Tester le pilotage sur un projet ?' : `Exporter ${plural(list.length, 'projet')} avec CapCut ?`, [
+    if (!confirmed && !(await ask(test ? 'Tester le pilotage sur un projet ?' : `Exporter ${plural(list.length, 'projet')} avec CapCut ?`, [
       el('p', 'ELPO va fermer et relancer CapCut, ouvrir chaque projet, lancer l’export puis revenir à la liste des projets. N’utilise pas le clavier ni la souris pendant le lot.'),
       el('p', 'Pour arrêter : bouton Tout arrêter, ou ⌘Q dans ELPO après l’export en cours.')], 'Démarrer'))) return false;
     await unwrap(api.pilotStart({ projects: list.map(p => ({ path: p.path, name: p.name })), test }));
@@ -620,6 +620,26 @@ async function startExport(list, engineName, test = false) {
   }
   return true;
 }
+// Automatic engine: each project goes to ELPO when it renders the timeline faithfully, to CapCut otherwise.
+async function startAutoExport(list) {
+  if (!list.length) throw new Error('Aucun projet à exporter.');
+  const routes = new Map((await engine('fidelity', { projects: list.map(p => p.path) })).map(r => [r.project, r]));
+  const elpoList = [], capcutList = [];
+  for (const p of list) { const r = routes.get(p.path); if (!r || r.empty) continue; (r.engine === 'capcut' ? capcutList : elpoList).push(p); }
+  if (!elpoList.length && !capcutList.length) throw new Error('Aucune timeline à exporter dans la sélection.');
+  const rows = capcutList.map(p => { const row = el('div', undefined, 'modal-row'), info = el('div'); info.append(el('strong', p.name), el('p', `Via CapCut : ${routes.get(p.path).reasons.join(', ')}.`)); row.append(icon('fx'), info); return row; });
+  const intro = el('p', `${plural(elpoList.length, 'projet')} avec ELPO en arrière-plan · ${plural(capcutList.length, 'projet')} via CapCut pour un rendu identique.`);
+  if (capcutList.length && (!pilotSettings.tile || !pilotSettings.exportDir)) {
+    // The pilot is not set up: export those projects with ELPO anyway (without these elements), or leave them out.
+    const anyway = await ask('Pilotage CapCut non calibré', [intro, ...rows, el('p', 'Calibre le pilotage dans Réglages pour exporter ces projets à l’identique. Sinon, ELPO peut les exporter sans ces éléments.')], 'Exporter avec ELPO quand même', 'Les laisser de côté');
+    if (anyway) elpoList.push(...capcutList);
+    capcutList.length = 0;
+    if (!elpoList.length) return false;
+  } else if (!(await ask(`Exporter ${plural(elpoList.length + capcutList.length, 'projet')} ?`, [intro, ...rows, ...(capcutList.length ? [el('p', 'Pendant le pilotage, ELPO utilise la souris et le clavier : n’y touche pas.')] : [])], 'Démarrer'))) return false;
+  if (elpoList.length && !(await startExport(elpoList, 'elpo'))) return false;
+  if (capcutList.length) await startExport(capcutList, 'capcut', false, { confirmed: true });
+  return true;
+}
 document.querySelectorAll('#singleEngine button').forEach(b => b.onclick = () => { singleEngine = b.dataset.engine; document.querySelectorAll('#singleEngine button').forEach(x => x.classList.toggle('on', x === b)); });
 $('exportOne').onclick = () => task(async () => { if (project) await startExport([{ path: project.path, name: project.name }], singleEngine); });
 
@@ -631,7 +651,7 @@ function renderBatch() {
   $('batchProjects').replaceChildren();
   for (const p of list) {
     const row = el('div', undefined, 'batch-item'), info = el('div'), mini = coverNode(p, 'mini');
-    info.append(el('strong', p.name), el('span', !p.readable ? 'Format non lu par ELPO : export via CapCut uniquement' : p.nonempty ? `Timeline montée · ${short(p.durationUs)}` : `Timeline vide · ${p.visuals} visuels, ${p.audios} audios`));
+    info.append(el('strong', p.name), el('span', !p.readable ? 'Format non lu par ELPO : export via CapCut uniquement' : p.nonempty ? `${p.elpo ? 'Monté par ELPO' : 'Montage manuel'} · ${short(p.durationUs)}` : `Timeline vide · ${p.visuals} visuels, ${p.audios} audios`));
     const remove = el('button', undefined, 'link'); remove.append(icon('x')); remove.setAttribute('aria-label', `Retirer ${p.name}`); remove.onclick = () => toggleSelect(p.path, false);
     row.append(mini, info, remove); $('batchProjects').append(row);
   }
@@ -639,12 +659,12 @@ function renderBatch() {
   const buildOn = $('batchBuild').checked, exportOn = $('batchExport').checked;
   $('batchBuildBox').classList.toggle('off', !buildOn); $('batchExportBox').classList.toggle('off', !exportOn);
   document.querySelectorAll('#batchEngine button').forEach(b => b.classList.toggle('on', b.dataset.engine === batchEngine));
-  $('elpoExportBox').hidden = batchEngine !== 'elpo'; $('capcutExportBox').hidden = batchEngine !== 'capcut';
-  $('batchTest').hidden = !(exportOn && batchEngine === 'capcut');
+  $('elpoExportBox').hidden = batchEngine === 'capcut'; $('capcutExportBox').hidden = batchEngine === 'elpo';
+  $('batchTest').hidden = !(exportOn && batchEngine !== 'elpo');
   $('batchVoicePatternBox').hidden = $('batchVoice').value !== 'name';
   const toBuild = buildOn ? list.filter(p => p.readable && !p.nonempty).length : 0;
-  const exportable = list.filter(p => batchEngine === 'capcut' ? !p.readable || p.nonempty : p.readable && p.nonempty).length + toBuild;
-  $('batchHint').textContent = !list.length ? 'Coche des projets dans Projets.' : [buildOn ? `${plural(toBuild, 'timeline')} à monter` : null, exportOn ? `${plural(exportable, 'vidéo')} à exporter ${batchEngine === 'capcut' ? 'via CapCut' : 'avec ELPO'}` : null,
+  const exportable = list.filter(p => batchEngine === 'elpo' ? p.readable && p.nonempty : !p.readable || p.nonempty).length + toBuild;
+  $('batchHint').textContent = !list.length ? 'Coche des projets dans Projets.' : [buildOn ? `${plural(toBuild, 'timeline')} à monter` : null, exportOn ? `${plural(exportable, 'vidéo')} à exporter ${batchEngine === 'capcut' ? 'via CapCut' : batchEngine === 'auto' ? 'avec le moteur automatique' : 'avec ELPO'}` : null,
     exportOn && exportable < list.length ? `${list.length - exportable} sans timeline` : null].filter(Boolean).join(' · ') || 'Active au moins une étape.';
   renderPilotState(); buttons();
 }
@@ -690,10 +710,11 @@ $('batchStart').onclick = () => task(async () => {
   if (!list.length) throw new Error('Coche au moins un projet.');
   if ($('batchBuild').checked && !(await batchBuild(list))) return;
   if (!$('batchExport').checked) return;
-  list = selectedProjects().filter(p => batchEngine === 'capcut' ? (!p.readable || p.nonempty) : p.readable && p.nonempty);
+  list = selectedProjects().filter(p => batchEngine === 'elpo' ? p.readable && p.nonempty : !p.readable || p.nonempty);
   const skipped = selected.size - list.length;
   if (skipped) notice(`${plural(skipped, 'projet')} sans timeline exportable ignoré(s).`);
-  if (await startExport(list, batchEngine)) $('queueList').scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  const started = batchEngine === 'auto' ? await startAutoExport(list) : await startExport(list, batchEngine);
+  if (started) $('queueList').scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 });
 $('batchTest').onclick = () => task(async () => { const list = selectedProjects(); await startExport(list.slice(0, 1), 'capcut', true); });
 function renderQueue() {

@@ -117,7 +117,7 @@ else {
       if (picked.canceled) return ok(null);
       const reply = await selectRoot(picked.filePaths[0]); return reply.ok ? ok(root) : reply;
     });
-    const actions = ['list', 'inspect', 'catalog', 'library', 'preview', 'commit', 'backups', 'restore', 'recover', 'thumbnail', 'running', 'batchPreview', 'batchCommit'];
+    const actions = ['list', 'inspect', 'catalog', 'library', 'preview', 'commit', 'backups', 'restore', 'recover', 'thumbnail', 'running', 'batchPreview', 'batchCommit', 'fidelity'];
     register('elpo:engine', async ({ action, args = {} } = {}) => {
       if (!actions.includes(action)) throw new Error('Action non autorisée.');
       if (JSON.stringify(args).length > 8e6) throw new Error('Données trop volumineuses.');

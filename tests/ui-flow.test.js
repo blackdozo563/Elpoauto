@@ -38,7 +38,7 @@ async function renderer(f, flowFolder = null) {
     chooseFlowFolder: () => ok(flowFolder ? e.setVisualFolder(f.project, flowFolder) : null),
     clearFlowFolder: () => ok(e.setVisualFolder(f.project, null)), subtitles: () => ok(true), jobs: () => ok({ export: [], pilot: [] }),
     exportSettings: () => ok(true), exportStart: args => { calls.push(['exportStart', args]); return ok(['job']); }, chooseDir: () => ok('/tmp/out'),
-    engine: async (action, args = {}) => { try { return { ok: true, result: action === 'running' ? 'closed' : action === 'library' ? { transitions: [], effects: [], filters: [] } : action === 'inspect' ? e.inspect(args.project) : action === 'preview' ? e.preview(args.project, args.options) : action === 'batchPreview' ? e.batchPreview(args.projects, args.options, args.rules) : action === 'batchCommit' ? e.batchCommit(args.tokens) : action === 'commit' ? e.commit(args.token) : e[action]() }; } catch (error) { return { ok: false, error: { message: error.message } }; } } };
+    engine: async (action, args = {}) => { try { return { ok: true, result: action === 'running' ? 'closed' : action === 'library' ? { transitions: [], effects: [], filters: [] } : action === 'inspect' ? e.inspect(args.project) : action === 'preview' ? e.preview(args.project, args.options) : action === 'batchPreview' ? e.batchPreview(args.projects, args.options, args.rules) : action === 'batchCommit' ? e.batchCommit(args.tokens) : action === 'commit' ? e.commit(args.token) : action === 'fidelity' ? e.fidelity(args.projects) : e[action]() }; } catch (error) { return { ok: false, error: { message: error.message } }; } } };
   const document = { getElementById: id => nodes.get(id), createElement: tag => new Node(tag), createElementNS: (_, tag) => new Node(tag), createTextNode: t => ({ textContent: t }), body: new Node(), querySelectorAll: () => [] };
   const context = vm.createContext({ window: { elpo: api }, document, setInterval() {}, setTimeout, clearTimeout, requestAnimationFrame() { return 1; }, cancelAnimationFrame() {}, console, devicePixelRatio: 1 });
   vm.runInContext(['lib/errors.js', 'lib/planner.js', 'lib/sync.js', 'renderer/app.js'].map(s => strip(source(s))).join('\n'), context);
@@ -124,12 +124,36 @@ test('UI : production en lot — cocher, monter les timelines vides puis exporte
     vm.runInContext('toggleSelect(projects[0].path, true)', context);
     assert.equal(nodes.get('selectionBar').hidden, false);
     await nodes.get('selectionExport').onclick();
-    nodes.get('batchBuild').checked = true; vm.runInContext('renderBatch()', context);
+    nodes.get('batchBuild').checked = true; vm.runInContext("batchEngine = 'elpo'; renderBatch()", context);
     assert.match(nodes.get('batchHint').textContent, /1 timeline à monter · 1 vidéo à exporter avec ELPO/);
     vm.runInContext("ffmpeg = { version: 'test' }", context);
     await nodes.get('batchStart').onclick(); await settle();
     const draft = JSON.parse(fs.readFileSync(f.draftFile, 'utf8'));
     assert.equal(draft.tracks.find(t => t.type === 'video').segments.length, 2);
     assert.equal(calls.at(-1)[0], 'exportStart'); assert.equal(calls.at(-1)[1].projects.length, 1);
+  } finally { f.cleanup(); }
+});
+test('UI : moteur automatique — montage ELPO exporté par ELPO, montage manuel avec titres confié à CapCut', async () => {
+  const f = fixture({ visuals: ['001.png', '002.png'] });
+  try {
+    const e = new Engine({ root: f.root, backupDir: f.backupDir, guard: () => {} });
+    e.commit(e.preview(f.project, {}).token);
+    const { nodes, context, calls } = await renderer(f);
+    vm.runInContext("var pilotCalls = []; api.pilotStart = args => { pilotCalls.push(args.projects); return Promise.resolve({ ok: true, result: true }); }", context);
+    vm.runInContext('toggleSelect(projects[0].path, true)', context);
+    await nodes.get('selectionExport').onclick();
+    assert.equal(vm.runInContext('batchEngine', context), 'auto');
+    assert.match(nodes.get('batchHint').textContent, /1 vidéo à exporter avec le moteur automatique/);
+    vm.runInContext("ffmpeg = { version: 'test' }", context);
+    await nodes.get('batchStart').onclick(); await settle();
+    assert.equal(calls.at(-1)[0], 'exportStart');
+    const draft = JSON.parse(fs.readFileSync(f.draftFile, 'utf8'));
+    draft.tracks.push({ type: 'text', segments: [{ id: 'titre', material_id: 'x' }] });
+    fs.writeFileSync(f.draftFile, JSON.stringify(draft));
+    const before = calls.length;
+    vm.runInContext("pilotSettings = { tile: { x: 1, y: 1 }, exportDir: '/tmp' }", context);
+    await nodes.get('batchStart').onclick(); await settle();
+    assert.equal(calls.length, before, 'aucun export ELPO pour un montage avec titres');
+    assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(pilotCalls)', context)), [[{ path: f.project, name: 'Test ELPO' }]]);
   } finally { f.cleanup(); }
 });
