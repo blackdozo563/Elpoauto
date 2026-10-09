@@ -19,7 +19,21 @@ jobs:
         run: test "$(uname -m)" = arm64
       - run: brew install ffmpeg
       - run: npm ci --no-audit --no-fund
-      - run: npm test
+      - name: Run the complete test suite
+        shell: bash
+        run: |
+          set -o pipefail
+          if npm test 2>&1 | tee "$RUNNER_TEMP/elpo-tests.log"; then
+            exit 0
+          else
+            python3 - "$RUNNER_TEMP/elpo-tests.log" <<'PY'
+          import pathlib, sys
+          text = pathlib.Path(sys.argv[1]).read_text()[-50000:]
+          text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print('::error title=ElpoAI test failure::' + text)
+          PY
+            exit 1
+          fi
       - run: npm run dist:mac
       - name: Verify the DMG and launch the packaged app
         run: node scripts/verify-dmg.mjs dist/ElpoAiAutoCapcut-0.5.0-arm64.dmg
