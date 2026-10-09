@@ -70,7 +70,7 @@ function finished(kind, jobs) {
 }
 function makePilot() {
   pilot?.stop();
-  pilot = new CapcutPilot({ root, settings: settings.pilot, actions: macActions({ ffprobe: tool?.ffprobe, trusted: () => !mac || systemPreferences.isTrustedAccessibilityClient(false) }) });
+  pilot = new CapcutPilot({ root, backupDir: path.join(app.getPath('userData'), 'backups'), settings: settings.pilot, actions: macActions({ ffprobe: tool?.ffprobe, trusted: () => !mac || systemPreferences.isTrustedAccessibilityClient(false) }) });
   pilot.on('update', jobs => { send('pilot', jobs); dock(); });
   pilot.on('log', line => send('pilotLog', line));
   pilot.on('idle', jobs => { finished('capcut', jobs); send('pilot', jobs); });

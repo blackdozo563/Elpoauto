@@ -39,7 +39,12 @@ try {
   assert.equal(ent['com.apple.security.automation.apple-events'], true);
   assert.equal(ent['com.apple.security.cs.allow-jit'], true);
   report.checks.push('Apple Events and JIT signature entitlements');
-  const executable = path.join(app, 'Contents/MacOS', plist.CFBundleExecutable);
+  const copiedApp = path.join(scratch, apps[0]);
+  command('/usr/bin/ditto', [app, copiedApp]);
+  command('/usr/bin/codesign', ['--verify', '--deep', '--strict', copiedApp]);
+  // Launch the installed copy, so helper processes cannot hold the DMG mounted.
+  command('/usr/bin/hdiutil', ['detach', mount]); mounted = false;
+  const executable = path.join(copiedApp, 'Contents/MacOS', plist.CFBundleExecutable);
   assert.equal(command('/usr/bin/lipo', ['-archs', executable]).trim(), 'arm64');
   report.checks.push('arm64 executable');
 
@@ -47,7 +52,7 @@ try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
   await new Promise(resolve => server.close(resolve));
-  child = spawn(executable, [`--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1', '--enable-logging=stderr'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  child = spawn(executable, [`--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1', '--enable-logging=stderr'], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let spawnError;
   child.on('error', e => { spawnError = e; });
   for (const stream of [child.stdout, child.stderr]) stream.on('data', bytes => { nativeLog = (nativeLog + bytes).slice(-24000); });
@@ -112,6 +117,9 @@ try {
   throw error;
 } finally {
   socket?.close();
+  if (child?.pid) {
+    try { process.kill(-child.pid, 'SIGTERM'); } catch (e) { if (e.code !== 'ESRCH') throw e; }
+  }
   if (child && child.exitCode === null) {
     child.kill('SIGTERM');
     for (let i = 0; i < 20 && child.exitCode === null; i++) await delay(100);

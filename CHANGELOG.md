@@ -4,6 +4,7 @@
 - Livraison autonome : dépendances verrouillées, build DMG arm64 sur GitHub Actions, signature ad hoc et vérification native du paquet avant publication.
 - Compatibilité FFmpeg 7 : cadence constante rétablie après normalisation des filtres d'assemblage pour permettre le rendu réel des transitions.
 - Corrections avant publication : chemins macOS canoniques, mise à jour de l'index global entre les montages d'un lot sans masquer les changements externes, préférence pour les ressources de style disponibles et contrôle de leur présence à l'écriture.
+- Fiabilité : sauvegarde transactionnelle des horodatages pendant le pilotage CapCut, restauration après interruption, vérification de fermeture avant écriture, publication des exports sans écrasement et annulation avant publication.
 - Interface entièrement refaite : deux modes visibles (Montage complet, Production en lot), page Projets avec couvertures, filtres et sélection multiple, timeline visuelle avec forme d'onde et raccords déplaçables, palette ⌘K, menu macOS natif (⌘C/⌘V rétablis), vibrancy, progression et badge dans le Dock, notifications.
 - Mode 1 : étapes Médias → Scènes → Style → Vérifier → Générer & exporter ; export direct du projet généré.
 - Mode 2 : montage en lot des timelines vides puis export en lot des projets cochés.
