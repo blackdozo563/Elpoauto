@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a Mac test package using the verified 0.3.1 package as runtime input."""
+"""Build a Mac test package from a previous verified package (runtime DMG, icons, examples)."""
 import hashlib
 import json
 import pathlib
@@ -25,9 +25,12 @@ def package(base, output, test_report):
     release.mkdir(parents=True)
     for folder in ('payload', 'runtime', 'Exemple-essai'):
         shutil.copytree(base / folder, release / folder)
-    shutil.copytree(source, release / 'sources', ignore=shutil.ignore_patterns('.git', 'dist', 'node_modules', '__pycache__', '*.log'))
+    # Installer templates and entitlements live in the repository (packaging/).
+    shutil.copy2(source / 'packaging' / 'runtime-entitlements.plist', release / 'payload' / 'runtime-entitlements.plist')
+    shutil.copy2(source / 'scripts' / 'repair_bundle.sh', release / 'payload' / 'repair_bundle.sh')
+    shutil.copytree(source, release / 'sources', ignore=shutil.ignore_patterns('.git', 'dist', 'downloads', 'node_modules', '__pycache__', '*.log'))
     for name in ('Installer-ElpoAiAutoCapcut.command', 'Diagnostiquer-ElpoAiAutoCapcut.command'):
-        text = (base / name).read_text().replace('0.3.1', version)
+        text = (source / 'packaging' / name).read_text().replace('{{VERSION}}', version)
         (release / name).write_text(text)
         (release / name).chmod(0o755)
     subprocess.run(['bash', '-n', str(release / 'Installer-ElpoAiAutoCapcut.command')], check=True)
@@ -45,7 +48,8 @@ def package(base, output, test_report):
         'Syntaxe Bash de l’installateur vérifiée.\n\n'
         'Installation, lancement natif, décodage Electron et rendu CapCut non testés sur Mac. '
         'Essayer sur une copie de projet avec timeline vide et voix off importée. '
-        'Aucun export vidéo ni export en lot dans cette version.\n')
+        'Export ELPO (FFmpeg) testé sous Linux avec un vrai rendu ; pilotage CapCut testé avec des actions simulées, '
+        'à calibrer sur CapCut 9.3.0 (Réglages → Pilotage de CapCut, bouton « Tester sur un projet »).\n')
     paths = [p.relative_to(release).as_posix() for p in sorted((release / 'payload').iterdir()) if p.name != 'checksums.txt']
     paths += ['runtime/TryAIToday.AutoCapCut-0.1.2-arm64.dmg']
     (release / 'payload/checksums.txt').write_text(''.join(hashlib.sha256((release / p).read_bytes()).hexdigest() + '  ' + p + '\n' for p in paths))

@@ -1,27 +1,89 @@
 import { parseSrt, parseScenes, planScenes } from '../lib/planner.js';
 import { groupCues, boundary, merge, split, clipAt } from '../lib/sync.js';
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const api = window.elpo;
-let project = null, report = null, currentStep = 'project', running = 'unknown', working = false, page = 0;
-let scenesFile = null, srtFile = null, transitions = [], transitionIds = new Set(), preferences = {};
-let syncPlan = null, syncPage = 0, mediaUrls = {}, playback = null, activeClip = null, raf = 0, playGeneration = 0;
-const pageSize = 12;
-const labels = { project: 'PROJET & MÉDIAS', settings: 'MISE EN SCÈNE', preview: 'APERÇU & MONTAGE', backups: 'SAUVEGARDES' };
+const el = (tag, text, cls) => { const n = document.createElement(tag); if (text !== undefined && text !== null) n.textContent = text; if (cls) n.className = cls; return n; };
+const SVG = 'http://www.w3.org/2000/svg';
+function icon(name, cls = 'ico') { const s = document.createElementNS(SVG, 'svg'); s.setAttribute('class', cls); const u = document.createElementNS(SVG, 'use'); u.setAttribute('href', `#i-${name}`); s.append(u); return s; }
 const time = t => { const ms = Math.round(t / 1000); return `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}.${String(ms % 1000).padStart(3, '0')}`; };
-const el = (tag, text, cls) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n; };
+const short = us => { const s = Math.round(us / 1e6); return s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s / 60) % 60).padStart(2, '0')}` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const plural = (n, words) => `${n} ${n > 1 ? words.split(' ').map(w => w + 's').join(' ') : words}`;
+const VOICE = /voix|voice|narrat|vo[-_ .]|_vo\b|^vo\b|speech|parole|lecture/;
+const fold = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const HUES = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6', '--s7', '--s8'].map(v => `var(${v})`);
 async function unwrap(promise) { const r = await promise; if (!r?.ok) { const e = new Error(r?.error?.message || 'Opération impossible.'); e.code = r?.error?.code; e.details = r?.error?.details; throw e; } return r.result; }
 const engine = (action, args) => unwrap(api.engine(action, args));
-function notice(text, error = false) { $('notice').textContent = text; $('notice').className = `notice${error ? ' error' : ''}`; $('notice').hidden = false; }
+
+// ── State ──────────────────────────────────────────────────────────────────
+let project = null, report = null, currentStep = 'media', currentPage = 'library', running = 'unknown', working = false, page = 0;
+let scenesFile = null, srtFile = null, transitions = [], transitionIds = new Set(), effectIds = new Set(), filterIds = new Set(), preferences = {};
+let syncPlan = null, syncPage = 0, mediaUrls = {}, playback = null, activeClip = null, raf = 0, playGeneration = 0;
+let projects = [], selected = new Set(), libraryFilter = 'all', status = {}, styles = {}, favorites = { transitions: [], effects: [], filters: [] };
+let library = { transitions: [], effects: [], filters: [] }, fxKind = 'transitions', fxShow = null, batchEngine = 'elpo', singleEngine = 'elpo';
+let exportJobs = [], pilotJobs = [], pilotSettings = {}, ffmpeg = null, focusScene = -1, ribbonZoom = 1, waveCache = new Map(), built = false;
+const pageSize = 12;
+const PAGES = { library: 'Projets', build: 'Montage complet', batch: 'Production en lot', fx: 'Bibliothèque', vault: 'Sauvegardes', settings: 'Réglages' };
+const STEPS = ['media', 'scenes', 'style', 'review', 'deliver'];
+
+// ── Feedback ───────────────────────────────────────────────────────────────
+let noticeTimer = 0;
+function notice(text, error = false) {
+  const n = $('notice'); n.textContent = text; n.className = `toast${error ? ' error' : ''}`; n.hidden = false;
+  clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { n.hidden = true; }, error ? 9000 : 5200);
+}
 function showError(e) { notice(`${e.message}${e.details?.length ? ' ' + e.details.slice(0, 8).join(', ') : ''}`, true); }
-function step(name) { if (name !== 'preview') $('voicePlayer').pause(); currentStep = name; Object.keys(labels).forEach(n => $(n).hidden = n !== name); document.querySelectorAll('.nav[data-step]').forEach(b => b.classList.toggle('active', b.dataset.step === name)); $('crumb').textContent = labels[name]; }
-function invalidate() { stopPlayback(); report = null; $('confirm').checked = false; $('previewContent').hidden = true; $('previewEmpty').hidden = false; $('exportScenes').disabled = true; buttons(); }
+// Confirmation in an in-app sheet. `nodes` is optional detail content.
+function ask(title, nodes = [], okLabel = 'Continuer', cancelLabel = 'Annuler') {
+  return new Promise(resolve => {
+    $('modalTitle').textContent = title; $('modalBody').replaceChildren(...[].concat(nodes).map(n => typeof n === 'string' ? el('p', n) : n));
+    $('modalOk').textContent = okLabel; $('modalCancel').textContent = cancelLabel; $('modalCancel').hidden = !cancelLabel; $('modal').hidden = false;
+    const done = value => { $('modal').hidden = true; resolve(value); };
+    $('modalOk').onclick = () => done(true); $('modalCancel').onclick = () => done(false);
+    $('modal').onclick = e => { if (e.target === $('modal')) done(false); };
+    setTimeout(() => $('modalOk').focus?.(), 30);
+  });
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+function go(name) {
+  if (!PAGES[name]) return;
+  if (name !== 'build') $('voicePlayer').pause();
+  currentPage = name;
+  for (const p of Object.keys(PAGES)) $(`page-${p}`).hidden = p !== name;
+  document.querySelectorAll('[data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === name));
+  $('pageTitle').textContent = PAGES[name];
+  $('selectionBar').hidden = name !== 'library' || !selected.size;
+  if (name === 'vault') task(backups);
+  if (name === 'batch') renderBatch();
+  if (name === 'fx') renderFx();
+  if (name === 'settings') renderSettings();
+}
+function step(name) {
+  if (name !== 'review') $('voicePlayer').pause();
+  currentStep = name;
+  for (const s of STEPS) $(`step-${s}`).hidden = s !== name;
+  document.querySelectorAll('#stepper button').forEach(b => { b.classList.toggle('on', b.dataset.step === name); b.classList.toggle('done', STEPS.indexOf(b.dataset.step) < STEPS.indexOf(name)); });
+  if (currentPage !== 'build') go('build');
+  renderRibbon(); buttons();
+}
+function invalidate() { stopPlayback(); report = null; $('confirm').checked = false; $('previewContent').hidden = true; $('previewEmpty').hidden = false; $('exportScenes').disabled = true; renderRibbon(); buttons(); }
 function buttons() {
+  const at = STEPS.indexOf(currentStep);
   $('chooseFlowFolder').disabled = !project || working;
   $('clearFlowFolder').disabled = !project || working;
   $('toSettings').disabled = !project || project.nonempty || working;
   $('analyze').disabled = !project || project.nonempty || working;
+  $('analyze').hidden = !['scenes', 'style', 'review'].includes(currentStep);
+  $('stepBack').disabled = at <= 0; $('stepNext').hidden = at >= STEPS.length - 1 || (currentStep === 'style' && !report);
+  $('stepNext').textContent = currentStep === 'review' ? 'Passer à la génération' : 'Étape suivante';
   $('build').disabled = !report || !$('confirm').checked || running !== 'closed' || working;
-  $('buildHint').textContent = running === 'open' ? 'Quittez CapCut pour autoriser la génération.' : running === 'unknown' ? 'La fermeture de CapCut doit être vérifiée.' : report ? 'Une sauvegarde précédera l’écriture des fichiers.' : 'L’écriture devient disponible après analyse et vérification.';
+  $('buildHint').textContent = running === 'open' ? 'Quitte CapCut pour autoriser la génération.' : running === 'unknown' ? 'La fermeture de CapCut doit être vérifiée.' : report ? 'Une sauvegarde précédera l’écriture des fichiers.' : 'L’écriture devient disponible après l’analyse.';
+  $('exportOne').disabled = !project || (!built && !project.nonempty) || working;
+  $('modeBuildMeta').textContent = project ? project.name : 'Choisis un projet';
+  $('modeBatchMeta').textContent = selected.size ? `${plural(selected.size, 'projet coché')}` : 'Aucun projet coché';
+  $('batchStart').disabled = !selected.size || working || !($('batchBuild').checked || $('batchExport').checked);
 }
 async function task(action) {
   if (working) return;
@@ -32,90 +94,347 @@ async function task(action) {
 async function poll() {
   if (working) return;
   try { running = await engine('running'); } catch { running = 'unknown'; }
-  $('status').textContent = running === 'closed' ? 'CapCut fermé · écriture possible' : running === 'open' ? 'CapCut ouvert · aperçu disponible' : 'Statut CapCut non vérifiable';
-  $('status').className = `badge${running === 'closed' ? ' green' : running === 'open' ? ' red' : ''}`; buttons();
+  const label = running === 'closed' ? 'CapCut fermé · écriture possible' : running === 'open' ? 'CapCut ouvert · aperçu seulement' : 'État de CapCut inconnu';
+  $('status').textContent = label; $('status').className = `pill${running === 'closed' ? ' green' : running === 'open' ? ' red' : ''}`;
+  $('capcutLine').textContent = running === 'closed' ? 'CapCut fermé' : running === 'open' ? 'CapCut ouvert' : 'CapCut : état inconnu';
+  $('capcutDot').className = `dot ${running === 'closed' ? 'ok' : running === 'open' ? 'warn' : ''}`;
+  buttons();
+}
+
+// ── Projects (library of CapCut drafts) ──────────────────────────────────────────
+function projectState(p) {
+  if (!p.readable) return 'unreadable';
+  if (p.lastExport) return 'exported';
+  return p.nonempty ? 'built' : 'ready';
+}
+function coverNode(p, cls = 'cover') {
+  const box = el('div', undefined, cls);
+  if (p?.coverUrl) { const img = el('img'); img.alt = ''; img.src = p.coverUrl; box.append(img); }
+  else box.append(el('span', (p?.name || '?').trim().charAt(0).toUpperCase(), 'monogram'));
+  return box;
+}
+function renderGrid() {
+  const q = $('librarySearch').value.trim().toLocaleLowerCase('fr');
+  const list = projects.filter(p => (!q || p.name.toLocaleLowerCase('fr').includes(q)) && (libraryFilter === 'all' || projectState(p) === libraryFilter));
+  $('projectGrid').replaceChildren(); $('projectGrid').classList.toggle('selecting', selected.size > 0);
+  for (const p of list) {
+    const card = el('article', undefined, `project-card${selected.has(p.path) ? ' selected' : ''}${project?.path === p.path ? ' active' : ''}`);
+    const open = el('button', undefined, 'card-open'); open.setAttribute('aria-label', `Ouvrir ${p.name} dans Montage complet`); open.onclick = () => openProject(p.path);
+    const check = el('button', undefined, 'card-check'); check.append(icon('check')); check.setAttribute('aria-label', `Cocher ${p.name}`); check.setAttribute('aria-pressed', String(selected.has(p.path)));
+    check.onclick = e => { e.stopPropagation(); toggleSelect(p.path); };
+    const body = el('div', undefined, 'card-body'), tags = el('div', undefined, 'tags');
+    body.append(el('strong', p.name), el('span', p.readable ? `${p.canvas?.width}×${p.canvas?.height} · ${p.fps} i/s · ${p.durationUs ? short(p.durationUs) : 'vide'}` : 'Lecture impossible', 'subtle'), tags);
+    const state = projectState(p);
+    tags.append(el('span', { ready: 'Timeline vide', built: 'Timeline montée', exported: 'Exporté', unreadable: 'Format non lu' }[state], `tag ${state === 'ready' ? 'gold' : state === 'unreadable' ? 'bad' : 'ok'}`));
+    if (p.readable) tags.append(el('span', `${plural(p.visuals, 'visuel')} · ${plural(p.audios, 'audio')}`, 'tag'));
+    if (p.visualFolder) tags.append(el('span', 'Dossier Flow', 'tag'));
+    if (p.subtitles) tags.append(el('span', 'SRT', 'tag'));
+    card.append(coverNode(p), body, open, check); $('projectGrid').append(card);
+  }
+  $('libraryEmpty').hidden = list.length > 0;
+  $('libraryEmptyTitle').textContent = projects.length ? 'Aucun projet ne correspond' : 'Aucun projet ici';
+  $('navProjects').textContent = projects.length ? String(projects.length) : '';
+  $('selectionText').textContent = plural(selected.size, 'projet coché');
+  $('selectionBar').hidden = currentPage !== 'library' || !selected.size;
+  buttons();
+}
+function toggleSelect(path, force) {
+  const on = force ?? !selected.has(path);
+  if (on) selected.add(path); else selected.delete(path);
+  renderGrid(); renderBatch();
+}
+async function loadProjects() {
+  const old = $('projectSelect').value;
+  projects = await unwrap(api.overview());
+  $('projectSelect').replaceChildren(el('option', 'Aucun projet actif'));
+  $('projectSelect').firstChild.value = '';
+  for (const p of projects) { const o = el('option', p.name); o.value = p.path; $('projectSelect').append(o); }
+  if (projects.some(p => p.path === old)) $('projectSelect').value = old;
+  selected = new Set([...selected].filter(p => projects.some(x => x.path === p)));
+  renderGrid(); renderBatch();
 }
 async function refresh() {
   const old = $('projectSelect').value;
-  const list = await engine('list');
-  $('projectSelect').replaceChildren(el('option', 'Sélectionnez un projet'));
+  projects = await unwrap(api.overview());
+  selected = new Set([...selected].filter(p => projects.some(x => x.path === p)));
+  $('projectSelect').replaceChildren(el('option', 'Aucun projet actif'));
   $('projectSelect').firstChild.value = '';
-  for (const p of list) { const o = el('option', p.name); o.value = p.path; $('projectSelect').append(o); }
-  if (list.some(p => p.path === old)) { $('projectSelect').value = old; await selectProject(); }
-  else { project = null; invalidate(); $('flowFolder').textContent = 'Aucun dossier Flow choisi : les visuels du chutier seront utilisés.'; $('clearFlowFolder').hidden = true; $('mediaList').replaceChildren(el('p', 'Sélectionnez un projet.')); $('projectInfo').textContent = 'Les informations du projet apparaîtront ici.'; }
-  if (!list.length) notice('Aucun projet reconnu dans ce dossier. Créez un projet dans CapCut et importez vos médias.');
+  for (const p of projects) { const o = el('option', p.name); o.value = p.path; $('projectSelect').append(o); }
+  renderGrid(); renderBatch();
+  if (projects.some(p => p.path === old)) { $('projectSelect').value = old; await selectProject(); }
+  else if (old) { project = null; resetProjectView(); }
+  if (!projects.length) notice('Aucun projet reconnu dans ce dossier. Crée un projet dans CapCut puis actualise.');
+}
+async function openProject(path) {
+  $('projectSelect').value = path;
+  await task(selectProject);
+  go('build'); step(project?.nonempty ? 'deliver' : 'media');
+}
+function resetProjectView() {
+  $('flowFolder').textContent = 'Les visuels importés dans CapCut sont utilisés.'; $('sourceTitle').textContent = 'Chutier CapCut'; $('clearFlowFolder').hidden = true;
+  $('mediaList').replaceChildren(el('p', 'Sélectionne un projet pour voir ses médias.', 'hint'));
+  $('projectInfo').textContent = 'Choisis un projet dans Projets ou dans le sélecteur en haut.'; $('projectName').textContent = 'Aucun projet actif';
+  $('projectCover').replaceChildren(); $('mediaCount').textContent = 'Aucun projet sélectionné';
+  invalidate();
 }
 async function selectProject() {
-  $('flowFolder').textContent = 'Aucun dossier Flow choisi : les visuels du chutier seront utilisés.'; $('clearFlowFolder').hidden = true;
-  invalidate(); syncPlan = null; syncPage = 0; scenesFile = null; srtFile = null; mediaUrls = {}; $('clearSrt').hidden = true; $('srtName').textContent = 'Chargez le SRT correspondant à la voix off de ce projet.'; $('clearScenes').hidden = true; $('scenesName').textContent = 'Chargez un plan existant pour reprendre vos corrections.'; project = null; renderSync();
-  const path = $('projectSelect').value; if (!path) { buttons(); return; }
+  resetProjectView(); built = false;
+  syncPlan = null; syncPage = 0; scenesFile = null; srtFile = null; mediaUrls = {}; focusScene = -1;
+  $('clearSrt').hidden = true; $('srtName').textContent = 'Phrases et pauses proposent les raccords. Le SRT peut aussi être incrusté à l’export.';
+  $('clearScenes').hidden = true; $('scenesName').textContent = 'Reprends un plan enregistré.'; project = null; renderSync();
+  const path = $('projectSelect').value; if (!path) { renderGrid(); buttons(); return; }
   const p = await engine('inspect', { project: path }); project = p;
-  $('flowFolder').textContent = p.visualFolder || 'Aucun dossier Flow choisi : les visuels du chutier seront utilisés.';
+  const card = projects.find(x => x.path === p.path);
+  $('projectName').textContent = p.name; $('projectCover').replaceChildren(coverNode(card || p, 'cover'));
+  $('flowFolder').textContent = p.visualFolder || 'Les visuels importés dans CapCut sont utilisés.';
+  $('sourceTitle').textContent = p.visualFolder ? 'Dossier d’images' : 'Chutier CapCut';
   $('clearFlowFolder').hidden = !p.visualFolder;
-  $('projectInfo').textContent = `${p.canvas?.width || '?'} × ${p.canvas?.height || '?'} · ${p.fps || '?'} images/s · ${p.nonempty ? 'Timeline déjà remplie — génération bloquée' : 'Timeline vide'}`;
-  $('projectHint').textContent = p.nonempty ? 'Sélectionnez une copie dont la timeline est vide.' : 'Projet prêt pour les réglages.';
-  $('mediaCount').textContent = `${p.visuals.length} visuels · ${p.audios.length} audios`;
-  $('mediaList').classList.remove('empty'); $('mediaList').replaceChildren();
-  for (const m of [...p.audios, ...p.visuals].slice(0, 150)) {
-    const row = el('div', undefined, 'media-row'); row.append(el('span', m.type === 'audio' ? '♫' : m.type === 'video' ? '▶' : '▧', 'media-icon'), el('span', m.name, 'name'), el('span', m.durationUs ? `${(m.durationUs / 1e6).toFixed(1)} s` : 'Image', 'subtle')); $('mediaList').append(row);
+  $('projectInfo').textContent = `${p.canvas?.width || '?'}×${p.canvas?.height || '?'} · ${p.fps || '?'} images/s · ${p.nonempty ? 'timeline déjà remplie : génération bloquée, export possible' : 'timeline vide, prête pour le montage'}`;
+  $('mediaCount').textContent = `${plural(p.visuals.length, 'visuel')} · ${plural(p.audios.length, 'audio')}`;
+  $('audio').replaceChildren(el('option', 'Choisis la voix off')); $('audio').firstChild.value = '';
+  $('music').replaceChildren(el('option', 'Aucune musique')); $('music').firstChild.value = '';
+  for (const a of p.audios) {
+    const label = `${a.name} · ${a.durationUs ? (a.durationUs / 1e6).toFixed(1) + ' s' : 'durée inconnue'}`;
+    const o = el('option', label); o.value = a.path; $('audio').append(o);
+    const m = el('option', label); m.value = a.path; $('music').append(m);
   }
-  if (p.visuals.length + p.audios.length > 150) $('mediaList').append(el('p', 'Liste abrégée à 150 médias. Tous seront pris en compte dans l’analyse.', 'hint'));
-  $('audio').replaceChildren(el('option', 'Choisissez la voix off')); $('audio').firstChild.value = '';
-  for (const a of p.audios) { const o = el('option', `${a.name} · ${a.durationUs ? (a.durationUs / 1e6).toFixed(1) + ' s' : 'durée inconnue'}`); o.value = a.path; $('audio').append(o); }
+  // Preselect only when unambiguous: the single audio, or a name that says "voix".
+  const named = p.audios.filter(a => VOICE.test(fold(a.name)));
   if (p.audios.length === 1) $('audio').value = p.audios[0].path;
-  $('placement').value = 'sync'; placementHint();
+  else if (named.length === 1) $('audio').value = named[0].path;
+  $('musicBox').hidden = true;
+  setPlacement('sync');
   mediaUrls = await unwrap(api.mediaSources(p.path));
-  if (p.flowError) notice(`${p.flowError} Choisissez un autre dossier ou utilisez le chutier.`, true);
-  else if (p.nonempty) notice('La timeline est déjà remplie. Pour protéger le montage, cette édition travaille uniquement sur des timelines vides.', true);
-  else if (p.ignoredFiles) notice(`${p.ignoredFiles} entrée(s) hors images prises en charge, cachées ou sous-dossiers ne sont pas importées.`);
-  else $('notice').hidden = true;
-  buttons();
+  renderMedia();
+  if (p.flowError) notice(`${p.flowError} Choisis un autre dossier ou reviens au chutier.`, true);
+  else if (p.nonempty) notice('La timeline est déjà remplie : ELPO ne la remplace pas. Tu peux exporter ce projet depuis l’étape 5 ou la production en lot.');
+  else if (p.ignoredFiles) notice(`${p.ignoredFiles} entrée(s) non prises en charge, cachées ou sous-dossiers ne sont pas importées.`);
+  renderGrid(); loadWave(); buttons();
 }
-function placementHint() {
-  $('timestampsBox').hidden = $('placement').value !== 'timestamps';
-  $('placementHint').textContent = { sync: 'Un plan éditable : phrases regroupées, médias choisis et raccords ajustables en secondes. La validation finale s’écoute dans l’aperçu.', even: 'Ordre naturel : 001, 002, 010. Chaque visuel reçoit une durée égale.', timecode: 'Tous les noms doivent contenir un horaire explicite : 0-00, 0-20, 0-20-243. Départ à zéro obligatoire.', srt: 'Un bloc SRT par visuel, dans l’ordre naturel. Les nombres de blocs et de visuels doivent correspondre.', timestamps: 'Collez un départ par visuel. Le dernier visuel finit avec la voix off.', scenes: 'Le JSON associe explicitement chaque fichier à un début et une fin en secondes.' }[$('placement').value];
+function renderMedia() {
+  const p = project; $('mediaList').replaceChildren();
+  for (const m of [...p.visuals].slice(0, 240)) {
+    const tile = el('div', undefined, 'media-tile');
+    if (m.type === 'photo' && mediaUrls[m.path]) { const img = el('img'); img.alt = ''; img.loading = 'lazy'; img.src = mediaUrls[m.path]; tile.append(img); }
+    else tile.append(icon(m.type === 'video' ? 'film' : 'image'));
+    if (m.type === 'video' && m.durationUs) tile.append(el('em', `${(m.durationUs / 1e6).toFixed(1)} s`));
+    tile.append(el('span', m.name)); $('mediaList').append(tile);
+  }
+  if (p.visuals.length > 240) $('mediaList').append(el('p', `Aperçu limité à 240 visuels sur ${p.visuals.length}. Tous sont pris en compte.`, 'hint'));
+  if (!p.visuals.length) $('mediaList').append(el('p', 'Aucun visuel : importe des images dans CapCut ou choisis un dossier d’images.', 'hint'));
 }
 function confirmVisualChange() {
-  return !syncPlan && !scenesFile || window.confirm('Changer la source des images réinitialise le plan actuel. Sauvez votre plan avant de continuer si vous souhaitez le conserver.');
+  return !syncPlan && !scenesFile ? Promise.resolve(true) : ask('Changer la source des images ?', 'Le plan actuel sera réinitialisé. Enregistre-le avant si tu veux le conserver.', 'Changer de source');
 }
 $('chooseFlowFolder').onclick = () => task(async () => {
-  if (!project || !confirmVisualChange()) return;
-  const selected = await unwrap(api.chooseFlowFolder(project.path));
-  if (selected) { await selectProject(); notice(`${selected.visuals.length} images Flow disponibles. Choisissez la voix off puis préparez les scènes.`); }
+  if (!project || !(await confirmVisualChange())) return;
+  const picked = await unwrap(api.chooseFlowFolder(project.path));
+  if (picked) { await selectProject(); notice(`${plural(picked.visuals.length, 'image')} disponibles. Prépare maintenant les scènes.`); }
 });
 $('clearFlowFolder').onclick = () => task(async () => {
-  if (!project || !confirmVisualChange()) return;
+  if (!project || !(await confirmVisualChange())) return;
   await unwrap(api.clearFlowFolder(project.path)); await selectProject();
 });
+
+// ── Scenes ─────────────────────────────────────────────────────────────────
+const PLACEMENT_HINTS = { sync: 'Un plan éditable : phrases regroupées, visuels choisis et raccords ajustables, ici ou directement sur la timeline.', even: 'Ordre naturel 001, 002, 010 : chaque visuel reçoit la même durée.', timecode: 'Chaque nom contient son horaire de départ (0-00, 0-20, 0-20-243). Départ à zéro obligatoire.', srt: 'Un bloc SRT par visuel, dans l’ordre des noms. Les nombres doivent correspondre.', timestamps: 'Colle un départ par visuel. Le dernier visuel finit avec la voix off.', scenes: 'Le JSON associe chaque fichier à un début et une fin en secondes.' };
+function setPlacement(value) { $('placement').value = value; placementHint(); }
+function placementHint() {
+  const v = $('placement').value;
+  $('timestampsBox').hidden = v !== 'timestamps';
+  $('placementHint').textContent = PLACEMENT_HINTS[v];
+  document.querySelectorAll('#placementCards button').forEach(b => { b.classList.toggle('on', b.dataset.placement === v); b.setAttribute('aria-checked', String(b.dataset.placement === v)); });
+  $('syncPanel').classList.toggle('muted', v !== 'sync');
+}
+document.querySelectorAll('#placementCards button').forEach(b => b.onclick = () => { setPlacement(b.dataset.placement); invalidate(); });
+function voiceDuration() {
+  const a = project?.audios.find(a => a.path === $('audio').value);
+  if (!a?.durationUs) throw new Error('Sélectionne une voix off dont la durée est connue.');
+  return a.durationUs;
+}
+function syncChanged() { invalidate(); setPlacement('sync'); renderSync(); }
+function visualFor(file) {
+  const matches = project?.visuals.filter(m => m.path === file || m.name === file) || [];
+  return matches.length === 1 ? matches[0] : null;
+}
+function renderSync() {
+  const rows = syncPlan?.scenes || [];
+  $('syncSummary').textContent = rows.length ? `${plural(rows.length, 'scène')} · ${rows.filter(s => !s.file).length} médias à associer` : 'Aucun plan : charge un SRT ou pars de tes médias';
+  $('syncRows').replaceChildren(); $('syncPages').replaceChildren();
+  syncPage = Math.max(0, Math.min(syncPage, Math.ceil(rows.length / pageSize) - 1));
+  rows.slice(syncPage * pageSize, (syncPage + 1) * pageSize).forEach((s, localIndex) => {
+    const index = syncPage * pageSize + localIndex, row = el('div', undefined, `sync-row${index === focusScene ? ' focus' : ''}`);
+    const num = el('span', String(index + 1), 'num'); num.style.background = HUES[index % HUES.length];
+    const found = visualFor(s.file);
+    if (found) s.file = found.path;
+    const thumb = el('div', undefined, 'thumb');
+    if (found?.type === 'photo' && mediaUrls[found.path]) { const img = el('img'); img.alt = ''; img.src = mediaUrls[found.path]; thumb.append(img); } else thumb.append(icon(found?.type === 'video' ? 'film' : 'image'));
+    const timing = el('div'), media = el('div');
+    const times = el('div', undefined, 'sync-times');
+    const start = el('input'); start.type = 'number'; start.step = '.001'; start.value = String(Number(Number(s.start).toFixed(3))); start.disabled = index === 0; start.setAttribute('aria-label', `Début scène ${index + 1}`);
+    start.onchange = () => { try { boundary(syncPlan, index, Number(start.value)); syncChanged(); } catch (e) { showError(e); renderSync(); } };
+    times.append(start, el('span', `→ ${Number(s.end).toFixed(3)} s`, 'timecode')); timing.append(times);
+    const text = el('textarea'); text.rows = 2; text.value = s.text || ''; text.placeholder = 'Texte de la scène'; text.setAttribute('aria-label', `Texte scène ${index + 1}`); text.onchange = () => { s.text = text.value; invalidate(); }; timing.append(text);
+    const select = el('select'); select.setAttribute('aria-label', `Visuel scène ${index + 1}`); const empty = el('option', 'Choisir le visuel…'); empty.value = ''; select.append(empty);
+    for (const m of project?.visuals || []) { const o = el('option', `${m.type === 'video' ? '▶ ' : ''}${m.name}`); o.value = m.path; select.append(o); }
+    if (found) select.value = found.path;
+    else if (s.file) { const o = el('option', `Absent ou ambigu : ${s.file}`); o.value = s.file; select.append(o); select.value = s.file; }
+    select.onchange = () => { s.file = select.value; s.sourceIn = 0; syncChanged(); };
+    media.append(select);
+    if (found?.type === 'video') {
+      const source = el('input'); source.type = 'number'; source.min = '0'; source.step = '.001'; source.value = s.sourceIn || 0; source.setAttribute('aria-label', `Entrée dans la vidéo scène ${index + 1}`);
+      source.onchange = () => { s.sourceIn = Number(source.value); invalidate(); };
+      media.append(el('label', `Entrée dans la vidéo (s) · source ${(found.durationUs / 1e6).toFixed(2)} s`), source);
+    }
+    const actions = el('div', undefined, 'sync-actions'), cut = el('input'); cut.type = 'number'; cut.step = '.001'; cut.value = ((s.start + s.end) / 2).toFixed(3); cut.setAttribute('aria-label', `Horaire de coupure scène ${index + 1}`);
+    const splitButton = el('button', 'Couper', 'btn ghost'); splitButton.prepend(icon('cut')); splitButton.onclick = () => { try { split(syncPlan, index, Number(cut.value)); syncChanged(); } catch (e) { showError(e); } };
+    const mergeButton = el('button', 'Fusionner', 'btn ghost'); mergeButton.title = 'Fusionner avec la scène suivante'; mergeButton.disabled = index === rows.length - 1; mergeButton.onclick = () => { merge(syncPlan, index); syncChanged(); };
+    actions.append(cut, splitButton, mergeButton); media.append(actions);
+    row.append(num, thumb, timing, media); $('syncRows').append(row);
+  });
+  if (rows.length > pageSize) {
+    const previous = el('button', 'Précédent', 'btn ghost'), next = el('button', 'Suivant', 'btn ghost');
+    previous.disabled = syncPage === 0; next.disabled = (syncPage + 1) * pageSize >= rows.length;
+    previous.onclick = () => { syncPage--; renderSync(); }; next.onclick = () => { syncPage++; renderSync(); };
+    $('syncPages').append(previous, el('span', `Page ${syncPage + 1} / ${Math.ceil(rows.length / pageSize)}`), next);
+  }
+  renderRibbon();
+}
+$('groupSrt').onclick = () => task(async () => {
+  if (!srtFile) throw new Error('Charge d’abord le SRT de cette voix off.');
+  const proposed = groupCues(parseSrt(srtFile.text), voiceDuration(), Number($('targetSeconds').value));
+  if (syncPlan && !(await ask('Remplacer le plan actuel ?', 'Les scènes proposées remplaceront tes corrections. Enregistre le plan pour les garder.', 'Remplacer'))) return;
+  syncPlan = proposed; syncPage = 0; syncChanged(); notice('Scènes proposées. Choisis les visuels selon la narration, puis vérifie à l’écoute.');
+});
+$('createEven').onclick = () => task(async () => {
+  const plan = planScenes(project?.visuals || [], voiceDuration(), { fps: project.fps });
+  if (syncPlan && !(await ask('Remplacer le plan actuel ?', 'Les médias seront répartis à durées égales.', 'Remplacer'))) return;
+  syncPlan = { version: 1, scenes: plan.map(s => ({ file: s.item.path, start: s.startUs / 1e6, end: s.endUs / 1e6, text: '' })) }; syncPage = 0; syncChanged();
+});
+$('assignOrder').onclick = () => task(async () => {
+  if (!syncPlan) throw new Error('Crée d’abord le plan de scènes.');
+  const sorted = [...project.visuals].sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
+  if (sorted.length !== syncPlan.scenes.length) throw new Error(`${plural(syncPlan.scenes.length, 'scène')} pour ${plural(sorted.length, 'visuel')} : associe les médias à la main ou ajuste les scènes.`);
+  if (!(await ask('Associer par ordre des noms ?', 'Les choix actuels seront remplacés. Vérifie ensuite la pertinence à l’écoute.', 'Associer'))) return;
+  syncPlan.scenes.forEach((s, i) => { s.file = sorted[i].path; s.sourceIn = 0; }); syncChanged();
+});
+$('saveSync').onclick = () => task(async () => {
+  if (!syncPlan) throw new Error('Aucun plan à enregistrer.');
+  if (await unwrap(api.export(`${project?.name || 'ElpoAiAutoCapcut'}-plan.json`, JSON.stringify(syncPlan, null, 2)))) notice('Plan enregistré. Recharge ce JSON pour reprendre tes corrections.');
+});
+for (const [type, load, clear, name] of [['scenes', 'loadScenes', 'clearScenes', 'scenesName'], ['srt', 'loadSrt', 'clearSrt', 'srtName']]) {
+  $(load).onclick = () => task(async () => { const r = await unwrap(api.loadFile(type)); if (!r) return; if (type === 'scenes') { syncPlan = parseScenes(r.text); scenesFile = r; setPlacement('sync'); renderSync(); } else srtFile = r; $(name).textContent = r.name; $(clear).hidden = false; invalidate(); placementHint(); });
+  $(clear).onclick = () => { if (type === 'scenes') { scenesFile = null; syncPlan = null; renderSync(); setPlacement('sync'); } else srtFile = null; $(clear).hidden = true; $(name).textContent = type === 'srt' ? 'SRT retiré.' : 'Plan retiré.'; invalidate(); placementHint(); };
+}
+
+// ── Style ──────────────────────────────────────────────────────────────────
+const MOTIONS = [['none', 'Fixe', ''], ['in', 'Zoom avant', 'm-in'], ['out', 'Zoom arrière', 'm-out'], ['alternate', 'Alterné', 'm-in'], ['pan-left', 'Vers la gauche', 'm-left'], ['pan-right', 'Vers la droite', 'm-right'], ['pan-up', 'Vers le haut', 'm-up'], ['pan-down', 'Vers le bas', 'm-down'], ['kenburns', 'Ken Burns', 'm-ken']];
+function renderMotions() {
+  $('motionGrid').replaceChildren();
+  for (const [value, label, anim] of MOTIONS) {
+    const b = el('button', undefined, `motion${$('motion').value === value ? ' on' : ''}`), frame = el('span', undefined, 'motion-frame'), pic = el('i');
+    if (anim) pic.style.setProperty('--anim', anim);
+    frame.append(pic); b.append(frame, el('span', label)); b.setAttribute('aria-pressed', String($('motion').value === value));
+    b.onclick = () => { $('motion').value = value; renderMotions(); invalidate(); };
+    $('motionGrid').append(b);
+  }
+}
+const FX = { transitions: { ids: () => transitionIds, box: 'transitions', fav: 'favTransitions' }, effects: { ids: () => effectIds, box: 'effects', fav: 'favEffects' }, filters: { ids: () => filterIds, box: 'filters', fav: 'favFilters' } };
+const isFavorite = (kind, item) => item.favorite || (favorites[kind] || []).includes(item.id);
+function renderChips(kind) {
+  const cfg = FX[kind], box = $(cfg.box), ids = cfg.ids();
+  const q = kind === 'transitions' ? $('transitionSearch').value.toLocaleLowerCase('fr') : '';
+  const list = (library[kind] || []).filter(t => t.available && (!q || t.name.toLocaleLowerCase('fr').includes(q)))
+    .sort((a, b) => isFavorite(kind, b) - isFavorite(kind, a) || a.name.localeCompare(b.name, 'fr'));
+  box.replaceChildren();
+  for (const t of list) {
+    const b = el('button', undefined, `chip${ids.has(t.id) ? ' selected' : ''}`);
+    if (isFavorite(kind, t)) b.append(icon('star'));
+    b.append(document.createTextNode(t.name));
+    b.title = `${t.category || ''}${t.clip ? ' · sur clip' : ''}${t.track ? ' · sur toute la vidéo' : ''}`; b.setAttribute('aria-pressed', String(ids.has(t.id)));
+    b.onclick = () => { if (ids.has(t.id)) ids.delete(t.id); else ids.add(t.id); invalidate(); renderChips(kind); };
+    box.append(b);
+  }
+  if (!list.length) box.append(el('p', q ? 'Aucun résultat.' : 'Rien de disponible. Utilise-les dans un projet CapCut, ferme-le, puis actualise.', 'hint'));
+  const fav = (library[kind] || []).filter(t => t.available && isFavorite(kind, t)).length;
+  const label = $(`${cfg.fav}Label`); if (label) label.textContent = `Mes favoris automatiquement${fav ? ` (${fav})` : kind === 'transitions' ? ' (sinon toutes)' : ' (aucun favori)'}`;
+}
+function renderTransitions() { renderChips('transitions'); }
+async function loadCatalog() {
+  library = await engine('library');
+  transitions = library.transitions;
+  for (const kind of Object.keys(FX)) { const ids = FX[kind].ids(); for (const id of [...ids]) if (!library[kind].some(t => t.id === id && t.available)) ids.delete(id); renderChips(kind); }
+  $('navFx').textContent = String(library.transitions.length + library.effects.length + library.filters.length || '');
+  renderFx(); invalidate();
+}
+function styleValues() {
+  return { videoPolicy: $('videoPolicy').value, motion: $('motion').value, amount: Number($('amount').value) / 100, videoVolume: Number($('videoVolume').value) / 100,
+    transitionIds: [...transitionIds], transitionSeconds: Number($('transitionSeconds').value), transitionOrder: $('transitionOrder').value,
+    effectIds: [...effectIds], effectScope: $('effectScope').value, filterIds: [...filterIds], filterScope: $('filterScope').value,
+    musicVolume: Number($('musicVolume').value) / 100,
+    favorites: { transitions: $('favTransitions').checked, effects: $('favEffects').checked, filters: $('favFilters').checked } };
+}
+function applyStyle(v = {}) {
+  for (const id of ['videoPolicy', 'motion', 'transitionSeconds', 'transitionOrder', 'effectScope', 'filterScope']) if (v[id] !== undefined) $(id).value = v[id];
+  if (Number.isFinite(v.amount)) $('amount').value = Math.round(v.amount * 100);
+  if (Number.isFinite(v.videoVolume)) $('videoVolume').value = Math.round(v.videoVolume * 100);
+  if (Number.isFinite(v.musicVolume)) $('musicVolume').value = Math.round(v.musicVolume * 100);
+  if (v.transitionIds) transitionIds = new Set(v.transitionIds);
+  if (v.effectIds) effectIds = new Set(v.effectIds);
+  if (v.filterIds) filterIds = new Set(v.filterIds);
+  $('favTransitions').checked = !!v.favorites?.transitions; $('favEffects').checked = !!v.favorites?.effects; $('favFilters').checked = !!v.favorites?.filters;
+  outputs(); renderMotions(); for (const k of Object.keys(FX)) renderChips(k);
+}
+function outputs() { $('amountValue').textContent = `${$('amount').value} %`; $('volumeValue').textContent = `${$('videoVolume').value} %`; $('musicVolumeValue').textContent = `${$('musicVolume').value} %`; }
 function options() {
   if ($('placement').value === 'sync' && (!syncPlan?.scenes?.length || syncPlan.scenes.some(s => !s.file))) throw new Error('Crée un plan et associe un média à chaque scène avant l’analyse.');
-  return { audioPath: $('audio').value, placement: $('placement').value === 'sync' ? 'scenes' : $('placement').value, videoPolicy: $('videoPolicy').value,
-  motion: $('motion').value, amount: Number($('amount').value) / 100, videoVolume: Number($('videoVolume').value) / 100,
-  transitionIds: [...transitionIds], transitionSeconds: Number($('transitionSeconds').value),
-  scenesText: $('placement').value === 'sync' ? JSON.stringify(syncPlan) : scenesFile?.text || '', srtText: srtFile?.text || '', timestampsText: $('timestampsText').value }; }
-function renderTransitions() {
-  $('transitions').replaceChildren(); $('transitions').classList.remove('empty');
-  const q = $('transitionSearch').value.toLocaleLowerCase('fr');
-  for (const t of transitions.filter(t => t.name.toLocaleLowerCase('fr').includes(q))) {
-    const b = el('button', t.name, `transition-chip${transitionIds.has(t.id) ? ' selected' : ''}${t.available ? '' : ' unavailable'}`);
-    b.disabled = !t.available; b.title = t.available ? `${t.category || 'Transition'} · ${t.id}` : t.reason; b.setAttribute('aria-pressed', String(transitionIds.has(t.id)));
-    b.onclick = () => { if (transitionIds.has(t.id)) transitionIds.delete(t.id); else transitionIds.add(t.id); invalidate(); renderTransitions(); }; $('transitions').append(b);
+  return { ...styleValues(), audioPath: $('audio').value, musicPath: $('music').value || undefined, placement: $('placement').value === 'sync' ? 'scenes' : $('placement').value,
+    scenesText: $('placement').value === 'sync' ? JSON.stringify(syncPlan) : scenesFile?.text || '', srtText: srtFile?.text || '', timestampsText: $('timestampsText').value };
+}
+function renderStyles() {
+  const current = $('styleSelect').value;
+  for (const id of ['styleSelect', 'batchStyle']) {
+    const s = $(id); s.replaceChildren(el('option', id === 'styleSelect' ? 'Réglages actuels' : 'Réglages par défaut')); s.firstChild.value = '';
+    for (const name of Object.keys(styles).sort((a, b) => a.localeCompare(b, 'fr'))) { const o = el('option', name); o.value = name; s.append(o); }
   }
-  if (!$('transitions').children.length) $('transitions').append(el('p', q ? 'Aucun résultat.' : 'Aucune transition trouvée. Utilisez une transition dans un projet CapCut, fermez-le puis actualisez le catalogue.', 'hint'));
+  if (styles[current]) $('styleSelect').value = current;
+  $('deleteStyle').hidden = !$('styleSelect').value;
+  $('styleList').replaceChildren();
+  for (const name of Object.keys(styles)) {
+    const row = el('div', undefined, 'row'), info = el('div'), v = styles[name];
+    info.append(el('strong', name), el('span', `${MOTIONS.find(m => m[0] === v.motion)?.[1] || 'Fixe'} · ${plural((v.transitionIds || []).length, 'transition')} · ${plural((v.effectIds || []).length, 'effet')} · ${plural((v.filterIds || []).length, 'filtre')}`));
+    const del = el('button', 'Supprimer', 'link'); del.onclick = () => task(async () => { styles = await unwrap(api.styles({ action: 'delete', name })); renderStyles(); });
+    row.append(info, del); $('styleList').append(row);
+  }
+  if (!Object.keys(styles).length) $('styleList').append(el('p', 'Aucun style. Règle mouvement, transitions, effets et filtres à l’étape Style, puis enregistre-les.', 'hint'));
 }
-async function loadCatalog() {
-  transitions = await engine('catalog'); transitionIds = new Set([...transitionIds].filter(id => transitions.some(t => t.id === id && t.available))); renderTransitions(); invalidate();
-}
+$('styleSelect').onchange = () => { const v = styles[$('styleSelect').value]; if (v) { applyStyle(v); invalidate(); notice(`Style « ${$('styleSelect').value} » appliqué.`); } $('deleteStyle').hidden = !$('styleSelect').value; };
+$('saveStyle').onclick = async () => {
+  const input = el('input'); input.type = 'text'; input.placeholder = 'Nom du style, par exemple Prière douce'; input.value = $('styleSelect').value || '';
+  if (!(await ask('Enregistrer ce style', [el('p', 'Mouvement, transitions, effets, filtres et sons seront réutilisables ici et en production en lot.'), input], 'Enregistrer'))) return;
+  const name = input.value.trim(); if (!name) return;
+  task(async () => { styles = await unwrap(api.styles({ action: 'save', name, value: styleValues() })); renderStyles(); $('styleSelect').value = name; $('deleteStyle').hidden = false; notice(`Style « ${name} » enregistré.`); });
+};
+$('deleteStyle').onclick = () => task(async () => { const name = $('styleSelect').value; if (!name || !(await ask(`Supprimer « ${name} » ?`, [], 'Supprimer'))) return; styles = await unwrap(api.styles({ action: 'delete', name })); $('styleSelect').value = ''; renderStyles(); });
+$('savePreset').onclick = () => task(async () => { const saved = styleValues(); await unwrap(api.preferences(saved)); preferences = saved; notice('Ces réglages seront appliqués par défaut.'); });
+for (const id of ['audio', 'music', 'videoPolicy', 'amount', 'videoVolume', 'musicVolume', 'transitionSeconds', 'transitionOrder', 'effectScope', 'filterScope', 'timestampsText', 'favTransitions', 'favEffects', 'favFilters'])
+  $(id).addEventListener('input', () => { invalidate(); placementHint(); outputs(); $('musicBox').hidden = !$('music').value; });
+$('audio').addEventListener('change', () => { syncPlan = null; scenesFile = null; renderSync(); loadWave(); notice('Voix off changée : reconstruis ou recharge le plan pour cette durée.'); });
+$('music').addEventListener('change', () => { if ($('music').value && $('music').value === $('audio').value) { $('music').value = ''; notice('La musique doit être différente de la voix off.', true); } $('musicBox').hidden = !$('music').value; });
+$('transitionSearch').oninput = renderTransitions;
+$('refreshTransitions').onclick = () => task(loadCatalog);
+
+// ── Review ──────────────────────────────────────────────────────────────────
 function renderReport() {
   $('previewEmpty').hidden = true; $('previewContent').hidden = false; $('exportScenes').disabled = false; $('confirm').checked = false;
   $('stats').replaceChildren();
-  for (const [value, label] of [[report.scenes, 'Scènes préparées'], [report.clips, 'Clips sur la timeline'], [time(report.durationUs), 'Durée de la voix off'], [`${report.fps} fps`, 'Fréquence du projet']]) {
+  for (const [value, label] of [[report.scenes, 'scènes'], [report.clips, 'clips sur la timeline'], [time(report.durationUs), 'de voix off'], [`${report.transitions + (report.effects || 0) + (report.filters || 0)}`, 'transitions, effets, filtres']]) {
     const c = el('div', undefined, 'stat'); c.append(el('strong', String(value)), el('span', label)); $('stats').append(c);
   }
   $('warnings').replaceChildren(...report.warnings.map(w => el('li', w)));
-  $('writeFiles').textContent = `${report.filesToWrite.length} fichiers seront sauvegardés puis modifiés : ${report.filesToWrite.join(' · ')}`;
-  $('sceneCount').textContent = `${report.rows.length} scènes · ${report.audio}`;
-  page = 0; renderRows(); setupPlayback(); step('preview'); buttons();
+  $('writeFiles').textContent = `${plural(report.filesToWrite.length, 'fichier')} sauvegardé(s) puis modifié(s) : ${report.filesToWrite.join(', ')}`;
+  $('sceneCount').textContent = `${plural(report.rows.length, 'scène')} · ${report.audio}`;
+  page = 0; renderRows(); setupPlayback(); step('review'); buttons();
 }
 function renderRows() {
   if (!report) return;
@@ -123,156 +442,65 @@ function renderRows() {
   $('sceneRows').replaceChildren();
   for (const r of report.rows.slice(page * pageSize, (page + 1) * pageSize)) {
     const tr = el('tr'); tr.append(el('td', String(r.index)));
-    const visual = el('td'); const jump = el('button', r.name, 'scene-jump'); jump.onclick = () => { $('voicePlayer').currentTime = r.startUs / 1e6; updatePlayback(); }; visual.append(jump); tr.append(visual, el('td', `${time(r.startUs)} → ${time(r.endUs)}`), el('td', `${(r.durationUs / 1e6).toFixed(2)} s`), el('td', String(r.clips)), el('td', r.text || '—')); $('sceneRows').append(tr);
-    if (r.type === 'photo') engine('thumbnail', { file: r.path }).then(src => { if (report?.token === token && visual.isConnected) { const img = el('img', undefined, 'thumb'); img.alt = ''; img.src = src; visual.prepend(img); } }).catch(() => {});
+    const visual = el('td'); const jump = el('button', r.name, 'scene-jump'); jump.onclick = () => seek(r.startUs); visual.append(jump);
+    tr.append(visual, el('td', `${time(r.startUs)} → ${time(r.endUs)}`), el('td', `${(r.durationUs / 1e6).toFixed(2)} s`), el('td', String(r.clips)), el('td', r.text || '—')); $('sceneRows').append(tr);
+    if (r.type === 'photo') {
+      const show = src => { if (report?.token === token && visual.isConnected) { const img = el('img', undefined, 'thumb-sm'); img.alt = ''; img.src = src; visual.prepend(img); } };
+      if (mediaUrls[r.path]) show(mediaUrls[r.path]); else engine('thumbnail', { file: r.path }).then(show).catch(() => {});
+    }
   }
   const totalPages = Math.ceil(report.rows.length / pageSize);
-  const prev = el('button', '← Précédent', 'button small'), next = el('button', 'Suivant →', 'button small');
+  if (totalPages <= 1) { $('pagination').replaceChildren(); return; }
+  const prev = el('button', 'Précédent', 'btn ghost'), next = el('button', 'Suivant', 'btn ghost');
   prev.disabled = page === 0; next.disabled = page >= totalPages - 1;
   prev.onclick = () => { page--; renderRows(); }; next.onclick = () => { page++; renderRows(); };
   $('pagination').replaceChildren(prev, el('span', `Page ${page + 1} / ${totalPages}`), next);
 }
-async function backups() {
-  const list = await engine('backups'); $('backupList').replaceChildren(); $('backupList').classList.remove('empty');
-  const status = { committed: 'Montage généré', restored: 'Restaurée', 'rolled-back': 'Annulée après erreur', pending: 'Récupération requise', 'recovery-required': 'Récupération requise', 'restore-pending': 'Restauration à reprendre', preparing: 'Préparation interrompue' };
-  for (const b of list) {
-    const row = el('div', undefined, 'backup-row'), info = el('div', undefined, 'info');
-    info.append(el('strong', b.name || b.project.split(/[\\/]/).pop()), el('span', `${new Date(b.created).toLocaleString('fr-FR')} · ${status[b.status] || b.status}`)); row.append(info);
-    if (['committed', 'pending', 'recovery-required', 'restore-pending'].includes(b.status)) {
-      const btn = el('button', 'Restaurer les fichiers', 'button small');
-      btn.onclick = () => { if (window.confirm('Restaurer les fichiers sauvegardés de ce projet ? CapCut doit être fermé. Les changements ultérieurs seront protégés par un contrôle de conflit.')) task(async () => { await engine('restore', { id: b.id }); invalidate(); notice('Les fichiers d’origine ont été restaurés.'); await backups(); }); }; row.append(btn);
-    }
-    $('backupList').append(row);
-  }
-  if (!list.length) $('backupList').append(el('p', 'Aucune génération sauvegardée dans ce dossier de projets.', 'hint'));
-}
-document.querySelectorAll('.nav[data-step]').forEach(b => b.onclick = () => { step(b.dataset.step); if (b.dataset.step === 'backups') task(backups); });
-$('chooseRoot').onclick = () => task(async () => { const r = await unwrap(api.chooseRoot()); if (r) { $('root').textContent = r; project = null; invalidate(); await refresh(); await loadCatalog(); } });
-$('refresh').onclick = () => task(refresh);
-$('projectSelect').onchange = () => task(selectProject);
-$('toSettings').onclick = () => step('settings');
-for (const id of ['audio', 'placement', 'videoPolicy', 'motion', 'amount', 'videoVolume', 'transitionSeconds', 'timestampsText']) $(id).addEventListener('input', () => { invalidate(); placementHint(); $('amountValue').textContent = `${$('amount').value} %`; $('volumeValue').textContent = `${$('videoVolume').value} %`; });
-$('audio').addEventListener('change', () => { syncPlan = null; scenesFile = null; renderSync(); notice('Voix off changée : reconstruis ou recharge le plan pour cette durée.'); });
-$('transitionSearch').oninput = renderTransitions;
-$('refreshTransitions').onclick = () => task(loadCatalog);
-for (const [type, load, clear, name] of [['scenes', 'loadScenes', 'clearScenes', 'scenesName'], ['srt', 'loadSrt', 'clearSrt', 'srtName']]) {
-  $(load).onclick = () => task(async () => { const r = await unwrap(api.loadFile(type)); if (!r) return; if (type === 'scenes') { syncPlan = parseScenes(r.text); scenesFile = r; $('placement').value = 'sync'; renderSync(); } else srtFile = r; $(name).textContent = r.name; $(clear).hidden = false; invalidate(); placementHint(); });
-  $(clear).onclick = () => { if (type === 'scenes') { scenesFile = null; syncPlan = null; renderSync(); $('placement').value = 'sync'; } else srtFile = null; $(clear).hidden = true; $(name).textContent = type === 'srt' ? 'SRT retiré. Repères de lecture uniquement, sans piste de captions.' : 'Plan retiré.'; invalidate(); placementHint(); };
-}
-$('savePreset').onclick = () => task(async () => { const { audioPath, scenesText, srtText, timestampsText, ...saved } = options(); await unwrap(api.preferences(saved)); preferences = saved; notice('Vos réglages de mouvement, son, vidéos et transitions ont été mémorisés.'); });
-$('analyze').onclick = () => task(async () => { invalidate(); $('settingsHint').textContent = 'Vérification des médias et préparation du montage…'; report = await engine('preview', { project: project.path, options: options() }); renderReport(); notice('Aperçu prêt. Aucun fichier CapCut n’a été modifié.'); $('settingsHint').textContent = 'L’analyse ne modifie aucun fichier CapCut.'; });
+$('analyze').onclick = () => task(async () => {
+  invalidate(); $('settingsHint').textContent = 'Vérification des médias et préparation du montage…';
+  try { report = await engine('preview', { project: project.path, options: options() }); }
+  finally { $('settingsHint').textContent = 'L’analyse ne modifie aucun fichier CapCut.'; }
+  renderReport(); notice('Aperçu prêt. Aucun fichier CapCut n’a été modifié.');
+});
 $('confirm').onchange = buttons;
 $('build').onclick = () => task(async () => {
-  $('buildHint').textContent = 'Sauvegarde, écriture puis vérification…'; stopPlayback(); const token = report.token; report = null; $('confirm').checked = false; $('exportScenes').disabled = true; const r = await engine('commit', { token });
-  report = null; $('confirm').checked = false; $('exportScenes').disabled = true;
-  notice(`Montage généré : ${r.scenes} scènes, ${r.clips} clips. ${r.files} fichiers sauvegardés et vérifiés. Ouvrez CapCut pour contrôler le résultat.`);
-  $('buildHint').textContent = 'Génération terminée. Ouvrez CapCut pour vérifier le rendu.';
+  $('buildHint').textContent = 'Sauvegarde, écriture puis vérification…'; stopPlayback(); const token = report.token; report = null; $('confirm').checked = false; $('exportScenes').disabled = true;
+  const r = await engine('commit', { token });
+  if (srtFile?.path) await unwrap(api.subtitles({ project: project.path, file: srtFile.path })).catch(() => {});
+  built = true;
+  notice(`Montage généré : ${plural(r.scenes, 'scène')}, ${plural(r.clips, 'clip')}. ${r.files} fichiers sauvegardés et vérifiés.`);
+  $('buildHint').textContent = 'Génération terminée. Ouvre CapCut pour contrôler, ou exporte directement.';
+  project.nonempty = true; buttons();
+  loadProjects().catch(() => {});
 });
 $('exportScenes').onclick = () => task(async () => {
   const obj = { version: 1, scenes: report.rows.map(r => ({ file: r.path, sourceIn: (r.sourceInUs || 0) / 1e6, start: r.startUs / 1e6, end: r.endUs / 1e6, ...(r.text ? { text: r.text } : {}) })) };
-  if (await unwrap(api.export('ElpoAiAutoCapcut-scenes.json', JSON.stringify(obj, null, 2)))) notice('Le plan de scènes a été exporté.');
+  if (await unwrap(api.export(`${project?.name || 'ElpoAiAutoCapcut'}-scenes.json`, JSON.stringify(obj, null, 2)))) notice('Plan de scènes exporté.');
 });
-$('refreshBackups').onclick = () => task(backups);
-$('recover').onclick = () => task(async () => { await engine('recover'); await backups(); notice('Verrou vérifié. Restaurez l’opération signalée si une récupération est requise.'); });
-$('openBackups').onclick = () => task(async () => unwrap(api.openBackups()));
-$('openCapcut').onclick = () => task(async () => { await unwrap(api.openCapcut()); running = 'open'; $('status').textContent = 'Ouverture de CapCut…'; $('status').className = 'badge red'; });
-async function start() {
-  const s = await unwrap(api.status()); $('root').textContent = s.root || 'Dossier à sélectionner'; preferences = s.preferences || {};
-  for (const id of ['videoPolicy', 'motion', 'transitionSeconds']) if (preferences[id] !== undefined) $(id).value = preferences[id];
-  if (Number.isFinite(preferences.amount)) $('amount').value = preferences.amount * 100;
-  if (Number.isFinite(preferences.videoVolume)) $('videoVolume').value = preferences.videoVolume * 100;
-  $('amountValue').textContent = `${$('amount').value} %`; $('volumeValue').textContent = `${$('videoVolume').value} %`;
-  transitionIds = new Set(preferences.transitionIds || []);
-  if (s.initialized) { await refresh(); await loadCatalog(); }
-  else notice('Bienvenue. Choisissez le dossier contenant vos projets CapCut pour commencer.');
-}
-task(start).then(poll);
-setInterval(poll, 10000);
-function voiceDuration() {
-  const a = project?.audios.find(a => a.path === $('audio').value);
-  if (!a?.durationUs) throw new Error('Sélectionne une voix off dont la durée est connue.');
-  return a.durationUs;
-}
-function syncChanged() { invalidate(); $('placement').value = 'sync'; placementHint(); renderSync(); }
-function renderSync() {
-  const rows = syncPlan?.scenes || [];
-  $('syncSummary').textContent = rows.length ? `${rows.length} scènes · ${rows.filter(s => !s.file).length} médias à associer · horaires en secondes, arrondis aux images lors de l’analyse` : 'Aucun plan éditable. Sélectionnez la voix off puis chargez un SRT, un JSON ou partez de vos médias.';
-  $('syncRows').replaceChildren(); $('syncPages').replaceChildren();
-  syncPage = Math.max(0, Math.min(syncPage, Math.ceil(rows.length / pageSize) - 1));
-  rows.slice(syncPage * pageSize, (syncPage + 1) * pageSize).forEach((s, localIndex) => {
-    const index = syncPage * pageSize + localIndex, row = el('div', undefined, 'sync-row'), timing = el('div'), media = el('div');
-    row.append(el('strong', String(index + 1)), timing, media);
-    const times = el('div', undefined, 'sync-times');
-    const startBox = el('div'), label = el('label', 'Début (secondes)'), start = el('input'); start.type = 'number'; start.step = '.001'; start.value = s.start; start.disabled = index === 0; start.setAttribute('aria-label', `Début scène ${index + 1}`);
-    start.onchange = () => { try { boundary(syncPlan, index, Number(start.value)); syncChanged(); } catch (e) { showError(e); renderSync(); } };
-    startBox.append(label, start); times.append(startBox, el('span', `→ ${Number(s.end).toFixed(3)} s`, 'hint')); timing.append(times);
-    const text = el('textarea'); text.rows = 3; text.value = s.text || ''; text.setAttribute('aria-label', `Texte scène ${index + 1}`); text.onchange = () => { s.text = text.value; invalidate(); }; timing.append(text);
-    const select = el('select'); select.setAttribute('aria-label', `Visuel scène ${index + 1}`); const empty = el('option', 'Choisir le visuel…'); empty.value = ''; select.append(empty);
-    for (const m of project?.visuals || []) { const o = el('option', `${m.type === 'video' ? '▶' : '▧'} ${m.name}`); o.value = m.path; select.append(o); }
-    const matches = project?.visuals.filter(m => m.path === s.file || m.name === s.file) || [];
-    const found = matches.length === 1 ? matches[0] : null;
-    if (found) { select.value = found.path; s.file = found.path; }
-    else if (s.file) { const o = el('option', `Absent ou ambigu : ${s.file}`); o.value = s.file; select.append(o); select.value = s.file; }
-    select.onchange = () => { s.file = select.value; s.sourceIn = 0; syncChanged(); };
-    media.append(el('label', 'Image ou extrait vidéo'), select);
-    if (found?.type === 'video') {
-      const source = el('input'); source.type = 'number'; source.min = '0'; source.step = '.001'; source.value = s.sourceIn || 0; source.setAttribute('aria-label', `Début dans la vidéo scène ${index + 1}`);
-      source.onchange = () => { s.sourceIn = Number(source.value); invalidate(); }; media.append(el('label', `Entrée dans la vidéo (secondes) · source ${(found.durationUs / 1e6).toFixed(2)} s`), source);
-    }
-    const actions = el('div', undefined, 'sync-actions'), cut = el('input'); cut.type = 'number'; cut.step = '.001'; cut.value = ((s.start + s.end) / 2).toFixed(3); cut.setAttribute('aria-label', `Horaire de coupure scène ${index + 1}`); cut.style.width = '100px';
-    const splitButton = el('button', 'Découper', 'button small'); splitButton.onclick = () => { try { split(syncPlan, index, Number(cut.value)); syncChanged(); } catch (e) { showError(e); } };
-    const mergeButton = el('button', 'Fusionner suivante', 'button small'); mergeButton.disabled = index === rows.length - 1; mergeButton.onclick = () => { merge(syncPlan, index); syncChanged(); };
-    actions.append(cut, splitButton, mergeButton); media.append(actions); $('syncRows').append(row);
-  });
-  if (rows.length > pageSize) {
-    const previous = el('button', '← Précédent', 'button small'), next = el('button', 'Suivant →', 'button small');
-    previous.disabled = syncPage === 0; next.disabled = (syncPage + 1) * pageSize >= rows.length;
-    previous.onclick = () => { syncPage--; renderSync(); }; next.onclick = () => { syncPage++; renderSync(); };
-    $('syncPages').append(previous, el('span', `Page ${syncPage + 1} / ${Math.ceil(rows.length / pageSize)}`), next);
-  }
-}
-$('groupSrt').onclick = () => task(async () => {
-  if (!srtFile) throw new Error('Charge le SRT de cette voix off avec « Charger un SRT ».');
-  const proposed = groupCues(parseSrt(srtFile.text), voiceDuration(), Number($('targetSeconds').value));
-  if (syncPlan && !window.confirm('Remplacer le plan actuel par les scènes proposées ? Sauve ton plan pour conserver tes corrections.')) return;
-  syncPlan = proposed; syncPage = 0; syncChanged(); notice('Scènes proposées. Choisis les visuels selon le sens de la narration, puis vérifie à l’écoute.');
-});
-$('createEven').onclick = () => task(async () => {
-  const plan = planScenes(project?.visuals || [], voiceDuration(), { fps: project.fps });
-  if (syncPlan && !window.confirm('Remplacer le plan actuel par une répartition égale des médias ?')) return;
-  syncPlan = { version: 1, scenes: plan.map(s => ({ file: s.item.path, start: s.startUs / 1e6, end: s.endUs / 1e6, text: '' })) }; syncPage = 0; syncChanged();
-});
-$('assignOrder').onclick = () => task(async () => {
-  if (!syncPlan) throw new Error('Crée d’abord le plan de scènes.');
-  const sorted = [...project.visuals].sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
-  if (sorted.length !== syncPlan.scenes.length) throw new Error(`${syncPlan.scenes.length} scènes pour ${sorted.length} visuels : associe les médias manuellement ou ajuste les scènes.`);
-  if (!window.confirm('Associer les scènes aux médias par ordre des noms ? Les choix actuels seront remplacés. La pertinence doit être vérifiée à l’écoute.')) return;
-  syncPlan.scenes.forEach((s, i) => { s.file = sorted[i].path; s.sourceIn = 0; }); syncChanged();
-});
-$('saveSync').onclick = () => task(async () => {
-  if (!syncPlan) throw new Error('Aucun plan à sauvegarder.');
-  if (await unwrap(api.export('ElpoAiAutoCapcut-plan-voix.json', JSON.stringify(syncPlan, null, 2)))) notice('Plan sauvegardé. Recharge ce JSON pour reprendre tes corrections.');
-});
-$('editSync').onclick = () => { $('voicePlayer').pause(); step('settings'); $('syncSummary').scrollIntoView({ block: 'center' }); };
+$('editSync').onclick = () => { $('voicePlayer').pause(); step('scenes'); };
+
+// ── Player ──────────────────────────────────────────────────────────────────
 function playbackError(text) { $('playerError').textContent = text; $('playerError').hidden = false; }
 function stopPlayback() {
   playGeneration++; cancelAnimationFrame(raf); playback = null; activeClip = null;
   $('voicePlayer').pause(); $('voicePlayer').removeAttribute('src'); $('voicePlayer').load();
   $('playerVideo').pause(); $('playerVideo').removeAttribute('src'); $('playerVideo').load();
-  $('playerImage').removeAttribute('src'); $('playerImage').hidden = true; $('playerVideo').hidden = true; $('playerEmpty').hidden = false;
+  $('playerImage').removeAttribute('src'); $('playerImage').hidden = true; $('playerVideo').hidden = true; $('playerEmpty').hidden = false; $('playerBadge').textContent = '';
 }
 function setupPlayback() {
   stopPlayback(); playback = report; $('playerError').hidden = true;
   const url = mediaUrls[report.audioPath];
-  if (!url) { playbackError('Voix off indisponible pour la lecture locale. Format non pris en charge ou fichier absent.'); return; }
+  if (!url) { playbackError('Voix off indisponible pour la lecture locale : format non pris en charge ou fichier absent.'); return; }
   $('voicePlayer').src = url; updatePlayback();
 }
+function seek(us) { if (!playback) return; $('voicePlayer').currentTime = us / 1e6; updatePlayback(); }
 function updatePlayback() {
   if (!playback) return;
   const audio = $('voicePlayer'), video = $('playerVideo'), t = audio.currentTime, clip = clipAt(playback.playbackClips, t);
-  $('playerClock').textContent = `${time(t * 1e6)} / ${time(playback.durationUs)}`;
+  $('playerClock').textContent = `${time(t * 1e6)} / ${time(playback.durationUs)}`; $('dockClock').textContent = time(t * 1e6);
+  placePlayhead(t * 1e6);
   if (!clip) { video.pause(); $('playerVideo').hidden = true; $('playerImage').hidden = true; $('playerEmpty').hidden = false; $('playerEmpty').textContent = 'Fin de la voix off.'; activeClip = null; return; }
-  const row = playback.rows[clip.scene - 1]; $('playerScene').textContent = `SCÈNE ${clip.scene} · ${row.name}`; $('playerText').textContent = row.text || 'Aucun texte associé.';
+  const row = playback.rows[clip.scene - 1]; $('playerScene').textContent = `Scène ${clip.scene} · ${row.name}`; $('playerText').textContent = row.text || 'Aucun texte associé.'; $('playerBadge').textContent = `${clip.scene} / ${playback.rows.length}`;
   const target = (clip.sourceStartUs + Math.round(t * 1e6) - clip.startUs) / 1e6;
   if (activeClip !== clip) {
     activeClip = clip; video.pause(); const url = mediaUrls[clip.path];
@@ -283,14 +511,407 @@ function updatePlayback() {
   }
   if (clip.type === 'video' && video.readyState >= 1) {
     if (Math.abs(video.currentTime - target) > .08) video.currentTime = target;
-    if (!audio.paused && video.paused) { const generation = playGeneration; video.play().catch(() => { if (generation === playGeneration) playbackError('Le clip vidéo ne peut pas être lu. Vérifie son codec dans CapCut.'); }); }
+    if (!audio.paused && video.paused) { const generation = playGeneration; video.play().catch(() => { if (generation === playGeneration) playbackError('Le clip vidéo ne peut pas être lu ici. Vérifie son codec dans CapCut.'); }); }
     else if (audio.paused) video.pause();
   }
 }
 function animatePlayback() { updatePlayback(); if (!$('voicePlayer').paused && playback) raf = requestAnimationFrame(animatePlayback); }
-$('voicePlayer').addEventListener('play', () => { cancelAnimationFrame(raf); animatePlayback(); });
+function togglePlay() { if (!playback) return; const a = $('voicePlayer'); if (a.paused) a.play()?.catch?.(() => {}); else a.pause(); }
+$('playToggle').onclick = togglePlay;
+$('voicePlayer').addEventListener('play', () => { cancelAnimationFrame(raf); animatePlayback(); $('playToggle').replaceChildren(icon('stop')); });
+$('voicePlayer').addEventListener('pause', () => $('playToggle').replaceChildren(icon('play')));
 for (const event of ['pause', 'seeked', 'timeupdate', 'ended']) $('voicePlayer').addEventListener(event, updatePlayback);
 $('voicePlayer').addEventListener('error', () => { if (playback) playbackError('Voix off illisible dans cet aperçu. Vérifie le fichier et son codec.'); });
 $('playerVideo').addEventListener('loadedmetadata', updatePlayback);
 $('playerVideo').addEventListener('error', () => { if (playback) playbackError('Vidéo illisible dans cet aperçu. Vérifie son codec ; aucun remplacement automatique.'); });
 $('playerImage').addEventListener('error', () => { if (playback) playbackError('Image illisible dans cet aperçu.'); });
+
+// ── Timeline ribbon: scenes, waveform, draggable cuts ────────────────────────────
+function ribbonScenes() {
+  if (report) return report.rows.map(r => ({ start: r.startUs / 1e6, end: r.endUs / 1e6, file: r.path, name: r.name }));
+  return (syncPlan?.scenes || []).map(s => ({ start: s.start, end: s.end, file: s.file, name: visualFor(s.file)?.name || '' }));
+}
+function renderRibbon() {
+  const scenes = ribbonScenes(), show = currentPage === 'build' && ['scenes', 'style', 'review'].includes(currentStep) && scenes.length > 0;
+  $('timelineDock').hidden = !show;
+  if (!show) return;
+  const total = scenes.at(-1).end || 1, editable = !report && $('placement').value === 'sync' && !!syncPlan;
+  $('ribbon').style.width = `${Math.round(ribbonZoom * 100)}%`;
+  $('dockInfo').textContent = editable ? 'Glisse un raccord pour l’ajuster. Clique une scène pour la retrouver dans le plan.' : report ? 'Clique une scène pour l’écouter.' : 'Aperçu du plan.';
+  $('ribbonScenes').replaceChildren();
+  scenes.forEach((s, i) => {
+    const block = el('div', undefined, `rscene${s.file ? '' : ' empty'}${i === focusScene ? ' focus' : ''}`);
+    block.style.left = `${s.start / total * 100}%`; block.style.width = `calc(${(s.end - s.start) / total * 100}% - 2px)`;
+    block.style.setProperty('--c', HUES[i % HUES.length]); block.style.setProperty('--i', String(Math.min(i, 60)));
+    const v = visualFor(s.file);
+    if (v?.type === 'photo' && mediaUrls[v.path]) { const img = el('img'); img.alt = ''; img.src = mediaUrls[v.path]; block.append(img); }
+    block.append(el('span', `${i + 1}${s.name ? ' · ' + s.name : s.file ? '' : ' · à associer'}`));
+    block.title = `${i + 1} · ${s.start.toFixed(2)} → ${s.end.toFixed(2)} s`;
+    block.onclick = () => { focusScene = i; if (report) seek(s.start * 1e6); else { syncPage = Math.floor(i / pageSize); renderSync(); } };
+    $('ribbonScenes').append(block);
+    if (editable && i > 0) $('ribbonScenes').append(handle(i, s.start, total));
+  });
+  drawWave();
+  if (report && playback) placePlayhead($('voicePlayer').currentTime * 1e6); else $('playhead').style.left = '0%';
+}
+function handle(index, at, total) {
+  const h = el('div', undefined, 'handle'); h.style.left = `${at / total * 100}%`; h.setAttribute('aria-label', `Raccord ${index}`);
+  h.onpointerdown = e => {
+    e.preventDefault(); h.setPointerCapture?.(e.pointerId); h.classList.add('drag');
+    const rect = $('ribbon').getBoundingClientRect(), rows = syncPlan.scenes, min = rows[index - 1].start + .05, max = rows[index].end - .05;
+    let t = at;
+    const move = ev => { t = Math.min(max, Math.max(min, (ev.clientX - rect.left) / rect.width * total)); h.style.left = `${t / total * 100}%`; $('dockClock').textContent = time(t * 1e6); };
+    const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.classList.remove('drag'); try { boundary(syncPlan, index, Math.round(t * 1000) / 1000); syncChanged(); } catch (err) { showError(err); renderRibbon(); } };
+    h.addEventListener('pointermove', move); h.addEventListener('pointerup', up);
+  };
+  return h;
+}
+function placePlayhead(us) { const total = (ribbonScenes().at(-1)?.end || 1) * 1e6; $('playhead').style.left = `${Math.min(100, us / total * 100)}%`; }
+async function loadWave() {
+  const path = $('audio').value, url = mediaUrls[path];
+  if (!url || waveCache.has(path) || typeof fetch !== 'function' || !window.AudioContext) { drawWave(); return; }
+  try {
+    const buffer = await (await fetch(url)).arrayBuffer(), ctx = new AudioContext(), audio = await ctx.decodeAudioData(buffer); ctx.close();
+    const data = audio.getChannelData(0), bins = 2400, step = Math.max(1, Math.floor(data.length / bins)), peaks = new Float32Array(bins);
+    for (let i = 0; i < bins; i++) { let m = 0; for (let j = i * step, end = Math.min(data.length, j + step); j < end; j += 4) m = Math.max(m, Math.abs(data[j])); peaks[i] = m; }
+    waveCache.set(path, peaks); drawWave();
+  } catch { /* the ribbon works without a waveform */ }
+}
+function drawWave() {
+  const canvas = $('wave'), peaks = waveCache.get(report?.audioPath || $('audio').value), ctx = canvas.getContext?.('2d');
+  if (!ctx || !canvas.clientWidth) return;
+  const w = canvas.clientWidth * devicePixelRatio, h = canvas.clientHeight * devicePixelRatio; canvas.width = w; canvas.height = h; ctx.clearRect(0, 0, w, h);
+  if (!peaks) return;
+  ctx.fillStyle = 'rgba(212,176,106,.55)';
+  const max = Math.max(...peaks) || 1, bar = Math.max(1, w / peaks.length);
+  for (let i = 0; i < peaks.length; i++) { const v = peaks[i] / max * h * .92; ctx.fillRect(i * bar, (h - v) / 2, Math.max(1, bar - .4), Math.max(1, v)); }
+}
+$('dockZoomIn').onclick = () => { ribbonZoom = Math.min(8, ribbonZoom * 1.6); renderRibbon(); };
+$('dockZoomOut').onclick = () => { ribbonZoom = Math.max(1, ribbonZoom / 1.6); renderRibbon(); };
+
+// ── Deliver: export this project ──────────────────────────────────────────────────
+function exportSettings() {
+  return { outputDir: $('outputDir').dataset.path || '', resolution: $('exResolution').value, fps: $('exFps').value, quality: $('exQuality').value, codec: $('exCodec').value,
+    parallel: Number($('exParallel').value), pattern: $('exPattern').value || '{projet}', hardware: $('exHardware').checked, subtitles: $('exSubtitles').checked };
+}
+function applyExportSettings(s = {}) {
+  if (s.outputDir) { $('outputDir').dataset.path = s.outputDir; $('outputDir').textContent = s.outputDir; }
+  for (const [id, key] of [['exResolution', 'resolution'], ['exFps', 'fps'], ['exQuality', 'quality'], ['exCodec', 'codec'], ['exParallel', 'parallel'], ['exPattern', 'pattern']]) if (s[key] !== undefined) $(id).value = String(s[key]);
+  if (s.hardware !== undefined) $('exHardware').checked = !!s.hardware; if (s.subtitles !== undefined) $('exSubtitles').checked = !!s.subtitles;
+}
+async function saveExportSettings() { await unwrap(api.exportSettings(exportSettings())); }
+async function startExport(list, engineName, test = false) {
+  if (!list.length) throw new Error('Aucun projet à exporter.');
+  if (engineName === 'capcut') {
+    if (!pilotSettings.tile) { go('settings'); throw new Error('Calibre d’abord la première vignette de l’accueil CapCut (Réglages, Pilotage de CapCut).'); }
+    if (!pilotSettings.exportDir) { go('settings'); throw new Error('Indique le dossier d’export utilisé par CapCut (Réglages).'); }
+    if (!(await ask(test ? 'Tester le pilotage sur un projet ?' : `Exporter ${plural(list.length, 'projet')} avec CapCut ?`, [
+      el('p', 'ELPO va fermer et relancer CapCut, ouvrir chaque projet, lancer l’export puis revenir à la liste des projets. N’utilise pas le clavier ni la souris pendant le lot.'),
+      el('p', 'Pour arrêter : bouton Tout arrêter, ou ⌘Q dans ELPO après l’export en cours.')], 'Démarrer'))) return false;
+    await unwrap(api.pilotStart({ projects: list.map(p => ({ path: p.path, name: p.name })), test }));
+    notice('Pilotage de CapCut démarré.');
+  } else {
+    if (!ffmpeg) { go('settings'); throw new Error('FFmpeg est introuvable. Installe-le avec Homebrew (brew install ffmpeg) ou indique son emplacement.'); }
+    const s = exportSettings();
+    if (!s.outputDir) { const dir = await unwrap(api.chooseDir({ purpose: 'output' })); if (!dir) return false; $('outputDir').dataset.path = dir; $('outputDir').textContent = dir; s.outputDir = dir; }
+    await saveExportSettings();
+    await unwrap(api.exportStart({ projects: list.map(p => ({ path: p.path, name: p.name })), settings: s }));
+    notice(`${plural(list.length, 'export')} ajouté(s) à la file.`);
+  }
+  return true;
+}
+document.querySelectorAll('#singleEngine button').forEach(b => b.onclick = () => { singleEngine = b.dataset.engine; document.querySelectorAll('#singleEngine button').forEach(x => x.classList.toggle('on', x === b)); });
+$('exportOne').onclick = () => task(async () => { if (project) await startExport([{ path: project.path, name: project.name }], singleEngine); });
+
+// ── Batch production ──────────────────────────────────────────────────────────────
+function selectedProjects() { return projects.filter(p => selected.has(p.path)); }
+function renderBatch() {
+  const list = selectedProjects();
+  $('batchCount').textContent = plural(list.length, 'projet');
+  $('batchProjects').replaceChildren();
+  for (const p of list) {
+    const row = el('div', undefined, 'batch-item'), info = el('div'), mini = coverNode(p, 'mini');
+    info.append(el('strong', p.name), el('span', !p.readable ? 'Format non lu par ELPO : export via CapCut uniquement' : p.nonempty ? `Timeline montée · ${short(p.durationUs)}` : `Timeline vide · ${p.visuals} visuels, ${p.audios} audios`));
+    const remove = el('button', undefined, 'link'); remove.append(icon('x')); remove.setAttribute('aria-label', `Retirer ${p.name}`); remove.onclick = () => toggleSelect(p.path, false);
+    row.append(mini, info, remove); $('batchProjects').append(row);
+  }
+  if (!list.length) $('batchProjects').append(el('p', 'Coche des projets dans Projets (case en haut à gauche de chaque vignette), ou ⌘A pour tout cocher.', 'hint'));
+  const buildOn = $('batchBuild').checked, exportOn = $('batchExport').checked;
+  $('batchBuildBox').classList.toggle('off', !buildOn); $('batchExportBox').classList.toggle('off', !exportOn);
+  document.querySelectorAll('#batchEngine button').forEach(b => b.classList.toggle('on', b.dataset.engine === batchEngine));
+  $('elpoExportBox').hidden = batchEngine !== 'elpo'; $('capcutExportBox').hidden = batchEngine !== 'capcut';
+  $('batchTest').hidden = !(exportOn && batchEngine === 'capcut');
+  $('batchVoicePatternBox').hidden = $('batchVoice').value !== 'name';
+  const toBuild = buildOn ? list.filter(p => p.readable && !p.nonempty).length : 0;
+  const exportable = list.filter(p => batchEngine === 'capcut' ? !p.readable || p.nonempty : p.readable && p.nonempty).length + toBuild;
+  $('batchHint').textContent = !list.length ? 'Coche des projets dans Projets.' : [buildOn ? `${plural(toBuild, 'timeline')} à monter` : null, exportOn ? `${plural(exportable, 'vidéo')} à exporter ${batchEngine === 'capcut' ? 'via CapCut' : 'avec ELPO'}` : null,
+    exportOn && exportable < list.length ? `${list.length - exportable} sans timeline` : null].filter(Boolean).join(' · ') || 'Active au moins une étape.';
+  renderPilotState(); buttons();
+}
+function renderPilotState() {
+  const items = [[!!pilotSettings.tile, pilotSettings.tile ? `Vignette calibrée (${pilotSettings.tile.x}, ${pilotSettings.tile.y})` : 'Vignette de l’accueil à calibrer'],
+    [!!pilotSettings.exportDir, pilotSettings.exportDir ? `Exports CapCut : ${pilotSettings.exportDir}` : 'Dossier d’export de CapCut à indiquer'],
+    [!!pilotSettings.exportButton, pilotSettings.exportButton ? 'Bouton Exporter calibré' : 'Bouton Exporter non calibré : touche Entrée (calibrage conseillé)'],
+    [true, pilotSettings.missing === 'continue' ? 'Médias manquants : export malgré la fenêtre « Relier »' : 'Projets avec médias manquants ignorés']];
+  $('pilotState').replaceChildren(...items.map(([okay, text]) => { const d = el('div'); d.append(el('span', undefined, `dot ${okay ? 'ok' : 'warn'}`), el('span', text)); return d; }));
+}
+document.querySelectorAll('#batchEngine button').forEach(b => b.onclick = () => { batchEngine = b.dataset.engine; renderBatch(); });
+for (const id of ['batchBuild', 'batchExport', 'batchVoice']) $(id).addEventListener('change', renderBatch);
+$('chooseOutput').onclick = () => task(async () => { const dir = await unwrap(api.chooseDir({ purpose: 'output' })); if (dir) { $('outputDir').dataset.path = dir; $('outputDir').textContent = dir; await saveExportSettings(); } });
+for (const id of ['exResolution', 'exFps', 'exQuality', 'exCodec', 'exParallel', 'exPattern', 'exHardware', 'exSubtitles']) $(id).addEventListener('change', () => saveExportSettings().catch(showError));
+function batchRules() {
+  return { voice: { mode: $('batchVoice').value, pattern: $('batchVoicePattern').value }, music: $('batchMusicPattern').value.trim() ? { mode: 'name', pattern: $('batchMusicPattern').value.trim() } : null };
+}
+async function batchBuild(list) {
+  const candidates = list.filter(p => p.readable && !p.nonempty);
+  if (!candidates.length) { notice('Aucune timeline vide à monter dans la sélection.'); return true; }
+  const style = styles[$('batchStyle').value] || preferences || {};
+  const results = await engine('batchPreview', { projects: candidates.map(p => p.path), options: { ...style, placement: $('batchPlacement').value, videoPolicy: $('batchVideoPolicy').value === 'repeat' ? 'repeat' : 'reject' }, rules: batchRules() });
+  const ready = results.filter(r => r.ok);
+  const rows = results.map(r => {
+    const row = el('div', undefined, 'modal-row'), info = el('div');
+    row.append(icon(r.ok ? 'check' : 'x')); info.append(el('strong', r.name));
+    info.append(el('p', r.ok ? `${plural(r.scenes, 'scène')}, ${plural(r.clips, 'clip')}, ${time(r.durationUs)} · voix : ${r.audio}${r.music ? ` · musique : ${r.music}` : ''}` : r.error.message));
+    if (r.ok) { const ul = el('ul'); for (const w of r.warnings.slice(0, 4)) ul.append(el('li', w)); info.append(ul); }
+    row.append(info); return row;
+  });
+  if (!ready.length) { await ask('Aucun projet ne peut être monté', rows, 'Fermer', null); return false; }
+  if (running !== 'closed') rows.unshift(el('p', 'CapCut doit être fermé pour écrire les timelines. Quitte CapCut avant de continuer.', 'alert'));
+  if (!(await ask(`Monter ${plural(ready.length, 'timeline')} ?`, rows, `Générer ${ready.length}`))) return false;
+  await poll();
+  const written = await engine('batchCommit', { tokens: ready.map(r => r.token) });
+  const okCount = written.filter(r => r.ok).length, failed = written.filter(r => !r.ok);
+  notice(`${plural(okCount, 'timeline')} montée(s)${failed.length ? `, ${failed.length} en échec : ${failed[0].error.message}` : '.'}`, !!failed.length);
+  await loadProjects();
+  return okCount > 0 || !failed.length;
+}
+$('batchStart').onclick = () => task(async () => {
+  let list = selectedProjects();
+  if (!list.length) throw new Error('Coche au moins un projet.');
+  if ($('batchBuild').checked && !(await batchBuild(list))) return;
+  if (!$('batchExport').checked) return;
+  list = selectedProjects().filter(p => batchEngine === 'capcut' ? (!p.readable || p.nonempty) : p.readable && p.nonempty);
+  const skipped = selected.size - list.length;
+  if (skipped) notice(`${plural(skipped, 'projet')} sans timeline exportable ignoré(s).`);
+  if (await startExport(list, batchEngine)) $('queueList').scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+});
+$('batchTest').onclick = () => task(async () => { const list = selectedProjects(); await startExport(list.slice(0, 1), 'capcut', true); });
+function renderQueue() {
+  const jobs = [...pilotJobs.map(j => ({ ...j, engine: 'capcut' })), ...exportJobs.map(j => ({ ...j, engine: 'elpo' }))];
+  const live = jobs.filter(j => ['queued', 'preparing', 'rendering', 'running'].includes(j.status));
+  $('queueSummary').textContent = jobs.length ? `${jobs.filter(j => j.status === 'done').length} terminé(s) · ${live.length} en cours ou en attente${jobs.some(j => j.status === 'failed') ? ` · ${jobs.filter(j => j.status === 'failed').length} en échec` : ''}` : 'Vide';
+  $('queueStop').hidden = !live.length;
+  $('queueList').replaceChildren();
+  for (const j of jobs) {
+    const card = projects.find(p => p.path === j.project);
+    const row = el('div', undefined, 'job'), main = el('div', undefined, 'job-main'), top = el('div', undefined, 'job-top'), bar = el('div', undefined, `bar ${j.status}`), fill = el('i');
+    fill.style.width = `${Math.round((j.progress || 0) * 100)}%`; if (['rendering', 'running', 'preparing'].includes(j.status)) fill.className = 'live';
+    bar.append(fill);
+    top.append(el('strong', j.name), el('span', `${j.engine === 'capcut' ? 'CapCut' : 'ELPO'} · ${j.stage}${j.size ? ' · ' + j.size : ''}`), el('span', j.status === 'done' ? 'Terminé' : `${Math.round((j.progress || 0) * 100)} %`, 'pct'));
+    main.append(top, bar);
+    if (j.error) main.append(el('span', j.error, 'err'));
+    const actions = el('div', undefined, 'job-actions');
+    if (j.status === 'done' && j.output) {
+      const show = el('button', 'Afficher', 'link'); show.onclick = () => task(() => unwrap(api.reveal({ file: j.output })));
+      const play = el('button', 'Lire', 'link'); play.onclick = () => task(() => unwrap(api.reveal({ file: j.output, open: true })));
+      actions.append(play, show);
+    } else if (j.engine === 'elpo' && ['queued', 'preparing', 'rendering'].includes(j.status)) { const c = el('button', 'Annuler', 'link'); c.onclick = () => task(() => unwrap(api.exportCancel(j.id))); actions.append(c); }
+    row.append(coverNode(card || j, 'mini'), main, actions); $('queueList').append(row);
+  }
+  if (!jobs.length) $('queueList').append(el('p', 'Les exports apparaîtront ici avec leur progression.', 'hint'));
+  const total = jobs.filter(j => j.status !== 'cancelled'), pct = total.length ? total.reduce((n, j) => n + (j.progress || 0), 0) / total.length : 0;
+  $('queueMini').hidden = !live.length; $('queueMiniText').textContent = `${plural(live.length, 'export')} en cours`; $('queueMiniPct').textContent = `${Math.round(pct * 100)} %`; $('queueMiniBar').style.width = `${pct * 100}%`;
+  const mine = project && jobs.find(j => j.project === project.path);
+  $('singleJob').hidden = !mine;
+  if (mine) $('singleJob').replaceChildren(el('span', `${mine.stage} · ${Math.round((mine.progress || 0) * 100)} %`, 'subtle'));
+}
+$('queueStop').onclick = () => task(async () => { if (!(await ask('Arrêter toute la production ?', 'Les exports en cours sont interrompus, aucun fichier incomplet n’est conservé.', 'Tout arrêter'))) return; await unwrap(api.exportCancel(null)); await unwrap(api.pilotStop()); });
+$('queueClear').onclick = () => task(async () => { exportJobs = await unwrap(api.exportClear()); pilotJobs = pilotJobs.filter(j => ['queued', 'running'].includes(j.status)); renderQueue(); });
+
+// Library-wide selection bar.
+$('selectionClear').onclick = () => { selected.clear(); renderGrid(); renderBatch(); };
+$('selectionBuild').onclick = () => { $('batchBuild').checked = true; $('batchExport').checked = false; go('batch'); };
+$('selectionExport').onclick = () => { $('batchBuild').checked = false; $('batchExport').checked = true; go('batch'); };
+
+// ── Bibliothèque (effects, transitions, filters) ───────────────────────────────────
+const KIND_LABEL = { transitions: 'transition', effects: 'effet', filters: 'filtre' };
+function renderFx() {
+  for (const [kind, id] of [['transitions', 'fxCountTransitions'], ['effects', 'fxCountEffects'], ['filters', 'fxCountFilters']]) $(id).textContent = String((library[kind] || []).length);
+  const all = library[fxKind] || [], favs = all.filter(t => isFavorite(fxKind, t));
+  const show = fxShow || (favs.some(t => t.available) ? 'favorites' : 'available');
+  document.querySelectorAll('#fxKind button').forEach(b => b.classList.toggle('on', b.dataset.kind === fxKind));
+  document.querySelectorAll('#fxShow button').forEach(b => b.classList.toggle('on', b.dataset.show === show));
+  const q = $('fxSearch').value.trim().toLocaleLowerCase('fr');
+  const list = all.filter(t => (show === 'all' || (show === 'favorites' ? isFavorite(fxKind, t) : t.available)) && (!q || `${t.name} ${t.category}`.toLocaleLowerCase('fr').includes(q)))
+    .sort((a, b) => isFavorite(fxKind, b) - isFavorite(fxKind, a) || b.available - a.available || a.name.localeCompare(b.name, 'fr'));
+  $('fxGrid').replaceChildren();
+  list.forEach((t, i) => {
+    const card = el('div', undefined, `fx${t.available ? '' : ' unavailable'}`), sw = el('span', t.name.charAt(0).toUpperCase(), 'fx-swatch'), info = el('div');
+    sw.style.setProperty('--c', HUES[(t.name.length + i) % HUES.length]);
+    info.append(el('strong', t.name), el('span', [t.category, t.favorite ? 'Favori CapCut' : null, t.available ? (t.track && !t.clip ? 'Sur toute la vidéo' : t.clip && t.track ? 'Clip ou vidéo entière' : null) : 'Ressource absente'].filter(Boolean).join(' · ') || KIND_LABEL[fxKind]));
+    info.title = t.available ? `Vu dans : ${(t.sources || []).join(', ')}` : t.reason;
+    const star = el('button', undefined, `star${isFavorite(fxKind, t) ? ' on' : ''}`); star.append(icon('star'));
+    star.setAttribute('aria-pressed', String(isFavorite(fxKind, t))); star.setAttribute('aria-label', `Favori : ${t.name}`);
+    if (t.favorite) star.title = 'Favori importé du projet « ELPO Favoris » : retire-le dans ce projet CapCut';
+    star.onclick = () => t.favorite ? notice('Ce favori vient du projet « ELPO Favoris » : retire-le de ce projet dans CapCut pour l’enlever.') : task(async () => { favorites = await unwrap(api.favorite({ kind: fxKind, id: t.id, on: !(favorites[fxKind] || []).includes(t.id) })); renderFx(); for (const k of Object.keys(FX)) renderChips(k); });
+    card.append(sw, info, star); $('fxGrid').append(card);
+  });
+  if (!list.length) $('fxGrid').append(el('p', show === 'favorites' ? `Aucun favori parmi les ${KIND_LABEL[fxKind]}s. Ajoute-en avec l’étoile, ou via le projet « ELPO Favoris ».` : `Aucun ${KIND_LABEL[fxKind]} trouvé dans tes projets. Utilise-en dans CapCut, ferme le projet, puis actualise.`, 'hint'));
+}
+document.querySelectorAll('#fxKind button').forEach(b => b.onclick = () => { fxKind = b.dataset.kind; fxShow = null; renderFx(); });
+document.querySelectorAll('#fxShow button').forEach(b => b.onclick = () => { fxShow = b.dataset.show; renderFx(); });
+$('fxSearch').oninput = renderFx;
+$('fxRefresh').onclick = () => task(loadCatalog);
+
+// ── Vault ───────────────────────────────────────────────────────────────────
+async function backups() {
+  const list = await engine('backups'); $('backupList').replaceChildren();
+  const label = { committed: 'Montage généré', restored: 'Restaurée', 'rolled-back': 'Annulée après erreur', pending: 'Récupération requise', 'recovery-required': 'Récupération requise', 'restore-pending': 'Restauration à reprendre', preparing: 'Préparation interrompue' };
+  for (const b of list) {
+    const row = el('div', undefined, 'row'), info = el('div');
+    info.append(el('strong', b.name || b.project.split(/[\\/]/).pop()), el('span', `${new Date(b.created).toLocaleString('fr-FR')} · ${label[b.status] || b.status}`)); row.append(info);
+    if (['committed', 'pending', 'recovery-required', 'restore-pending'].includes(b.status)) {
+      const btn = el('button', 'Restaurer', 'btn ghost');
+      btn.onclick = async () => { if (await ask('Restaurer les fichiers de ce projet ?', 'CapCut doit être fermé. Les changements faits ensuite dans CapCut sont protégés par un contrôle de conflit.', 'Restaurer')) task(async () => { await engine('restore', { id: b.id }); invalidate(); notice('Les fichiers d’origine ont été restaurés.'); await backups(); loadProjects().catch(() => {}); }); };
+      row.append(btn);
+    }
+    $('backupList').append(row);
+  }
+  if (!list.length) $('backupList').append(el('p', 'Aucune génération sauvegardée pour ce dossier de projets.', 'hint'));
+  $('historyList').replaceChildren();
+  for (const h of (status.history || []).slice(0, 30)) {
+    const row = el('div', undefined, 'row'), info = el('div');
+    info.append(el('strong', h.name), el('span', `${new Date(h.at).toLocaleString('fr-FR')} · ${h.engine === 'capcut' ? 'via CapCut' : 'export ELPO'}`));
+    const show = el('button', 'Afficher', 'link'); show.onclick = () => task(() => unwrap(api.reveal({ file: h.output })));
+    row.append(info, show); $('historyList').append(row);
+  }
+  if (!(status.history || []).length) $('historyList').append(el('p', 'Aucune vidéo exportée pour l’instant.', 'hint'));
+}
+$('refreshBackups').onclick = () => task(backups);
+$('recover').onclick = () => task(async () => { await engine('recover'); await backups(); notice('Verrou vérifié. Restaure l’opération signalée si une récupération est requise.'); });
+$('openBackups').onclick = () => task(async () => unwrap(api.openBackups()));
+$('openCapcut').onclick = () => task(async () => { await unwrap(api.openCapcut()); running = 'open'; $('status').textContent = 'Ouverture de CapCut…'; $('status').className = 'pill red'; });
+
+// ── Settings ───────────────────────────────────────────────────────────────────
+function renderFfmpeg() {
+  $('ffmpegLine').textContent = ffmpeg ? `FFmpeg ${ffmpeg.version}` : 'FFmpeg absent';
+  $('ffmpegDot').className = `dot ${ffmpeg ? 'ok' : 'warn'}`;
+  $('ffmpegInfo').textContent = ffmpeg ? `FFmpeg ${ffmpeg.version} trouvé : ${ffmpeg.ffmpeg}. Accélération Apple ${ffmpeg.encoders?.h264_videotoolbox ? 'disponible' : 'indisponible'}, incrustation de sous-titres ${ffmpeg.filters?.subtitles ? 'disponible' : 'indisponible'}.` : 'FFmpeg est introuvable : l’export ELPO est désactivé. L’export via CapCut reste possible.';
+}
+function renderSettings() {
+  renderFfmpeg(); renderStyles();
+  const p = pilotSettings;
+  $('tilePoint').textContent = p.tile ? `x ${p.tile.x}, y ${p.tile.y}` : 'Non calibrée';
+  $('exportPoint').textContent = p.exportButton ? `x ${p.exportButton.x}, y ${p.exportButton.y}` : 'Touche Entrée utilisée';
+  $('capcutExportDir').textContent = p.exportDir || 'Non choisi';
+  for (const [id, key] of [['pOpenWith', 'openWith'], ['pLaunch', 'launchSeconds'], ['pOpen', 'openSeconds'], ['pDialog', 'dialogSeconds'], ['pStable', 'stableSeconds'], ['pTimeout', 'timeoutMinutes'], ['pMissing', 'missing']]) if (p[key] !== undefined) $(id).value = p[key];
+  if (Array.isArray(p.closeKeys)) $('pClose').value = p.closeKeys.join(',');
+}
+$('ffmpegDetect').onclick = () => task(async () => { ffmpeg = await unwrap(api.ffmpeg({})); renderFfmpeg(); notice(ffmpeg ? 'FFmpeg trouvé.' : 'FFmpeg toujours introuvable.', !ffmpeg); });
+$('ffmpegChoose').onclick = () => task(async () => { ffmpeg = await unwrap(api.ffmpeg({ choose: true })); renderFfmpeg(); });
+async function savePilot(extra = {}) {
+  pilotSettings = await unwrap(api.pilotSettings({ ...pilotSettings, openWith: $('pOpenWith').value, launchSeconds: $('pLaunch').value, openSeconds: $('pOpen').value, dialogSeconds: $('pDialog').value, stableSeconds: $('pStable').value, timeoutMinutes: $('pTimeout').value, missing: $('pMissing').value, closeKeys: $('pClose').value ? $('pClose').value.split(',') : [], ...extra }));
+  renderSettings(); renderPilotState();
+}
+$('pilotSave').onclick = () => task(async () => { await savePilot(); notice('Réglages du pilotage enregistrés.'); });
+$('clearExportPoint').onclick = () => task(() => savePilot({ exportButton: null }));
+$('chooseCapcutDir').onclick = () => task(async () => { const dir = await unwrap(api.chooseDir({ purpose: 'capcut' })); if (dir) await savePilot({ exportDir: dir }); });
+$('pilotAccess').onclick = () => task(async () => { const okay = await unwrap(api.pilotAccess()); $('accessState').textContent = okay ? 'Accessibilité autorisée' : 'Accessibilité à autoriser'; $('accessState').className = `pill ${okay ? 'green' : 'red'}`; if (!okay) notice('Coche ElpoAiAutoCapcut dans Réglages Système → Confidentialité et sécurité → Accessibilité, puis réessaie.'); });
+document.querySelectorAll('[data-calibrate]').forEach(b => b.onclick = () => task(async () => {
+  const target = b.dataset.calibrate;
+  $('calibrateText').textContent = target === 'tile' ? 'Ouvre l’accueil de CapCut et place le pointeur au centre de la première vignette de projet.' : 'Ouvre la fenêtre d’export de CapCut et place le pointeur sur le bouton « Exporter ».';
+  $('calibrateCount').textContent = '5'; $('calibrate').hidden = false;
+  try { pilotSettings = await unwrap(api.pilotCalibrate(target)); notice('Position enregistrée.'); } finally { $('calibrate').hidden = true; }
+  renderSettings(); renderPilotState();
+}));
+
+// ── Command palette & keyboard ────────────────────────────────────────────────────
+function commands() {
+  const list = [
+    ['Aller à Projets', '⌘1', () => go('library')], ['Montage complet', '⌘2', () => go('build')], ['Production en lot', '⌘3', () => go('batch')],
+    ['Bibliothèque : transitions, effets, filtres', '⌘4', () => go('fx')], ['Sauvegardes', '⌘5', () => go('vault')], ['Réglages', '⌘,', () => go('settings')],
+    ['Étape Médias', '', () => step('media')], ['Étape Scènes', '', () => step('scenes')], ['Étape Style', '', () => step('style')], ['Étape Vérifier', '', () => step('review')], ['Étape Générer et exporter', '', () => step('deliver')],
+    ['Analyser et vérifier', '⌘↩', () => !$('analyze').disabled && $('analyze').onclick()], ['Charger un SRT', '', () => $('loadSrt').onclick()],
+    ['Proposer les scènes depuis le SRT', '', () => $('groupSrt').onclick()], ['Partir des médias', '', () => $('createEven').onclick()],
+    ['Tout cocher dans Projets', '⌘A', () => { projects.forEach(p => selected.add(p.path)); renderGrid(); renderBatch(); }],
+    ['Production en lot : monter les projets cochés', '', () => { $('batchBuild').checked = true; $('batchExport').checked = false; go('batch'); }],
+    ['Production en lot : exporter les projets cochés', '', () => { $('batchBuild').checked = false; $('batchExport').checked = true; go('batch'); }],
+    ['Exporter le projet actif', '', () => { step('deliver'); if (!$('exportOne').disabled) $('exportOne').onclick(); }],
+    ['Générer dans CapCut', '', () => step('deliver')], ['Bibliothèque : mes favoris', '', () => { fxShow = 'favorites'; go('fx'); }],
+    ['Calibrer le pilotage de CapCut', '', () => go('settings')], ['Vidéos exportées', '', () => go('vault')], ['Ouvrir CapCut', '⇧⌘O', () => $('openCapcut').onclick()], ['Changer le dossier des projets', '', () => $('chooseRoot').onclick()],
+    ['Actualiser les projets', '', () => $('refresh').onclick()], ['Actualiser la bibliothèque', '', () => $('fxRefresh').onclick()],
+  ];
+  for (const p of projects.slice(0, 200)) list.push([`Ouvrir « ${p.name} »`, 'Projet', () => openProject(p.path)]);
+  return list;
+}
+let paletteIndex = 0, paletteItems = [];
+function openPalette() { $('palette').hidden = false; $('paletteInput').value = ''; renderPalette(); setTimeout(() => $('paletteInput').focus?.(), 20); }
+function closePalette() { $('palette').hidden = true; }
+function renderPalette() {
+  const q = fold($('paletteInput').value.trim());
+  paletteItems = commands().filter(([label]) => !q || q.split(/\s+/).every(w => fold(label).includes(w))).slice(0, 40);
+  paletteIndex = Math.min(paletteIndex, Math.max(0, paletteItems.length - 1));
+  $('paletteList').replaceChildren(...paletteItems.map(([label, hint, run], i) => { const li = el('li', label, i === paletteIndex ? 'on' : ''); if (hint) li.append(el('span', hint)); li.onclick = () => { closePalette(); run(); }; return li; }));
+}
+$('paletteInput').addEventListener('input', () => { paletteIndex = 0; renderPalette(); });
+$('paletteInput').addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown') { paletteIndex = Math.min(paletteItems.length - 1, paletteIndex + 1); renderPalette(); e.preventDefault(); }
+  else if (e.key === 'ArrowUp') { paletteIndex = Math.max(0, paletteIndex - 1); renderPalette(); e.preventDefault(); }
+  else if (e.key === 'Enter') { const item = paletteItems[paletteIndex]; closePalette(); item?.[2](); }
+  else if (e.key === 'Escape') closePalette();
+});
+$('palette').onclick = e => { if (e.target === $('palette')) closePalette(); };
+$('paletteButton').onclick = openPalette;
+function command(name) {
+  ({ library: () => go('library'), build: () => go('build'), batch: () => go('batch'), 'library-fx': () => go('fx'), vault: () => go('vault'), settings: () => go('settings'), palette: openPalette, 'open-capcut': () => $('openCapcut').onclick() })[name]?.();
+}
+document.addEventListener?.('keydown', e => {
+  const typing = /INPUT|TEXTAREA|SELECT/.test(e.target?.tagName || '');
+  if (e.key === 'Escape') { if (!$('palette').hidden) closePalette(); else if (!$('modal').hidden) $('modalCancel').onclick?.(); return; }
+  if (e.metaKey && e.key.toLowerCase() === 'k') { e.preventDefault(); $('palette').hidden ? openPalette() : closePalette(); return; }
+  if (e.metaKey && e.key === 'Enter' && currentPage === 'build') { e.preventDefault(); if (!$('analyze').disabled) $('analyze').onclick(); return; }
+  if (e.metaKey && !typing && e.key.toLowerCase() === 'a' && currentPage === 'library') { e.preventDefault(); const all = projects.every(p => selected.has(p.path)); projects.forEach(p => all ? selected.delete(p.path) : selected.add(p.path)); renderGrid(); renderBatch(); return; }
+  if (e.metaKey && /^[1-5]$/.test(e.key) && !window.elpoMenu) { e.preventDefault(); go(['library', 'build', 'batch', 'fx', 'vault'][Number(e.key) - 1]); return; }
+  if (e.key === ' ' && !typing && currentPage === 'build' && currentStep === 'review') { e.preventDefault(); togglePlay(); }
+});
+window.addEventListener?.('resize', () => drawWave());
+
+function showRoot(r) { const parts = String(r || '').split('/').filter(Boolean); $('root').textContent = r ? (parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : r) : 'Dossier à sélectionner'; $('root').title = r || ''; }
+// ── Wiring ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll('[data-page]').forEach(b => b.onclick = () => go(b.dataset.page));
+document.querySelectorAll('[data-page-link]').forEach(b => b.onclick = () => go(b.dataset.pageLink));
+document.querySelectorAll('#stepper button').forEach(b => b.onclick = () => step(b.dataset.step));
+document.querySelectorAll('[data-run]').forEach(b => b.onclick = () => $(b.dataset.run).onclick());
+document.querySelectorAll('#libraryFilter button').forEach(b => b.onclick = () => { libraryFilter = b.dataset.filter; document.querySelectorAll('#libraryFilter button').forEach(x => x.classList.toggle('on', x === b)); renderGrid(); });
+$('librarySearch').oninput = renderGrid;
+$('stepBack').onclick = () => step(STEPS[Math.max(0, STEPS.indexOf(currentStep) - 1)]);
+$('stepNext').onclick = () => step(STEPS[Math.min(STEPS.length - 1, STEPS.indexOf(currentStep) + 1)]);
+$('chooseRoot').onclick = () => task(async () => { const r = await unwrap(api.chooseRoot()); if (r) { showRoot(r); project = null; selected.clear(); invalidate(); await refresh(); await loadCatalog(); } });
+$('refresh').onclick = () => task(refresh);
+$('projectSelect').onchange = () => task(selectProject);
+$('toSettings').onclick = () => step('scenes');
+
+api.on?.(({ type, data }) => {
+  if (type === 'export') { exportJobs = data; renderQueue(); }
+  else if (type === 'pilot') { pilotJobs = data; renderQueue(); }
+  else if (type === 'pilotLog') { $('pilotLogBox').hidden = false; const li = el('li', `${new Date(data.at).toLocaleTimeString('fr-FR')} ${data.project ? data.project + ' : ' : ''}${data.text}`); $('pilotLog').append(li); li.scrollIntoView?.({ block: 'nearest' }); }
+  else if (type === 'pilotError') showError(data);
+  else if (type === 'calibrate') $('calibrateCount').textContent = String(data.seconds);
+  else if (type === 'command') command(data);
+});
+
+async function start() {
+  status = await unwrap(api.status());
+  if (status.platform === 'darwin') { document.body.classList.add('vibrant'); window.elpoMenu = true; }
+  showRoot(status.root); preferences = status.preferences || {}; styles = status.styles || {};
+  favorites = { transitions: [], effects: [], filters: [], ...(status.favorites || {}) }; pilotSettings = status.pilot || {}; ffmpeg = status.ffmpeg || null;
+  if (status.version) $('version').textContent = `Édition locale ${status.version}`;
+  applyStyle(preferences); applyExportSettings(status.exportSettings || {}); renderStyles(); renderFfmpeg(); renderMotions(); placementHint();
+  if (status.initialized) { await refresh(); await loadCatalog(); }
+  else notice('Bienvenue. Choisis le dossier qui contient tes projets CapCut pour commencer.');
+  try { const jobs = await unwrap(api.jobs()); exportJobs = jobs.export; pilotJobs = jobs.pilot; renderQueue(); } catch { /* no running jobs */ }
+  document.body.classList.remove('booting');
+}
+go('library'); step('media'); go('library');
+task(start).then(poll);
+setInterval(poll, 10000);

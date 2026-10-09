@@ -1,9 +1,60 @@
 {
   "name": "elpo-ai-auto-capcut",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "main": "electron/main.js",
-  "description": "Préparation contrôlée de projets CapCut — version locale pour ELPO",
-  "scripts": { "test": "node --test tests/*.test.js", "start": "electron ." }
+  "description": "Montage automatique et export en lot de projets CapCut — version locale pour ELPO",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac dmg --arm64 --publish never"
+  },
+  "author": "ELPO",
+  "devDependencies": {
+    "electron": "32.3.3",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.elpo.ai.autocapcut",
+    "productName": "ElpoAiAutoCapcut",
+    "copyright": "ELPO — usage local",
+    "directories": {
+      "output": "dist",
+      "buildResources": "packaging"
+    },
+    "files": [
+      "electron/**",
+      "lib/**",
+      "renderer/**",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.video",
+      "icon": "packaging/icon.icns",
+      "identity": null,
+      "hardenedRuntime": false,
+      "minimumSystemVersion": "11.0",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "ElpoAiAutoCapcut pilote CapCut pour exporter tes projets en lot."
+      }
+    },
+    "dmg": {
+      "title": "ElpoAiAutoCapcut ${version}",
+      "artifactName": "ElpoAiAutoCapcut-${version}-arm64.dmg"
+    },
+    "afterPack": "scripts/after-pack.cjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blackdozo563/Elpoauto.git"
+  }
 }
