@@ -1,0 +1,2 @@
+7b30c9bcd240d438fb980ab42e977b87a40e354b247d1ded60c39733662e6462  ElpoAiAutoCapcut-0.4.0-Mac-AppleSilicon.zip
+5182b0b8b1da797bdc55e73656392cf332a40863c701621e085945be80203746  ElpoAiAutoCapcut-0.4.0-sources.zip
