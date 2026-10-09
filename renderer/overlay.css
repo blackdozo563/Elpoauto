@@ -1,0 +1,46 @@
+/* Overlays shown above CapCut: the pilot HUD and the aiming sight. Same ink and brass as the studio. */
+:root { color-scheme: dark; --text: #f2ede3; --muted: #a3b0c5; --faint: #8391a9; --brass: #d4b06a; --brass-hi: #ebcd8c; --sage: #78cba9; --coral: #ee8778; --amber: #e8b04b;
+  --serif: ui-serif, "New York", "Iowan Old Style", Georgia, serif; --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: transparent; color: var(--text); font: 13px/1.45 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; }
+[hidden] { display: none !important; }
+kbd { font: 600 11px var(--sans); border: 1px solid rgba(255, 255, 255, .25); border-radius: 6px; padding: 1px 6px; }
+@keyframes pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* HUD */
+.hud { position: absolute; inset: 8px; padding: 16px 18px 14px; border-radius: 20px; background: rgba(15, 22, 37, .86); border: 1px solid rgba(255, 255, 255, .12); box-shadow: 0 20px 50px -18px rgba(0, 0, 0, .85); display: grid; gap: 12px; -webkit-backdrop-filter: blur(26px) saturate(1.4); backdrop-filter: blur(26px) saturate(1.4); }
+.hud.paused { border-color: rgba(232, 176, 75, .55); }
+.hud-top { display: flex; align-items: center; gap: 14px; }
+.ring { position: relative; width: 58px; height: 58px; flex: none; }
+.ring svg { width: 58px; height: 58px; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 6; }
+.ring .track { stroke: rgba(255, 255, 255, .1); }
+.ring .value { stroke: var(--brass); stroke-linecap: round; transition: stroke-dashoffset .4s; }
+.ring span { position: absolute; inset: 0; display: grid; place-items: center; font: 600 13px var(--mono); color: var(--brass-hi); }
+.hud-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.eyebrow { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+.eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--brass); animation: pulse 1.4s ease-in-out infinite; }
+.paused .eyebrow::before { background: var(--amber); animation: none; }
+.hud h1 { margin: 0; font: 600 20px/1.2 var(--serif); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stage { font-size: 12.5px; color: #d6d0c4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+.steps li { display: grid; gap: 5px; text-align: center; font-size: 10.5px; color: var(--faint); }
+.steps li::before { content: ""; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .12); }
+.steps li.done { color: #9fdcc2; }
+.steps li.done::before { background: var(--sage); }
+.steps li.now { color: var(--brass-hi); font-weight: 600; }
+.steps li.now::before { background: var(--brass); animation: pulse 1.2s ease-in-out infinite; }
+.hint { font-size: 11.5px; color: #d6d0c4; padding: 7px 10px; border-radius: 10px; background: rgba(255, 255, 255, .05); }
+
+/* Aiming sight */
+.sight { position: fixed; inset: 0; cursor: crosshair; background: rgba(5, 8, 14, .28); }
+.line { position: fixed; background: rgba(235, 205, 140, .7); pointer-events: none; }
+.line.h { left: 0; right: 0; height: 1px; }
+.line.v { top: 0; bottom: 0; width: 1px; }
+.target { position: fixed; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, .55), 0 0 0 10px rgba(212, 176, 106, .22); pointer-events: none; }
+.coords { position: fixed; padding: 4px 10px; border-radius: 999px; background: rgba(13, 20, 34, .9); font: 500 11.5px var(--mono); color: var(--brass-hi); pointer-events: none; white-space: nowrap; }
+.card { position: fixed; left: 50%; top: 28px; width: 560px; margin-left: -280px; padding: 16px 18px; border-radius: 20px; background: rgba(15, 22, 37, .9); border: 1px solid rgba(255, 255, 255, .12); box-shadow: 0 30px 70px -20px rgba(0, 0, 0, .85); display: grid; gap: 6px; pointer-events: none; -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); }
+.card .eyebrow::before { display: none; }
+.card h1 { margin: 0; font: 600 20px/1.2 var(--serif); }
+.card p { margin: 0; font-size: 12.5px; color: #d6d0c4; }

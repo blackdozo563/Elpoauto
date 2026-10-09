@@ -81,3 +81,25 @@ test('pilote : un refus d’accessibilité libère la réservation', async () =>
     assert.equal(pilot.controller, null);
   } finally { f.cleanup(); }
 });
+test('pilote : pause avant la prochaine action CapCut, reprise, puis arrêt pendant une pause', async () => {
+  const f = fixture();
+  try {
+    const exportDir = path.join(f.temp, 'exports'); fs.mkdirSync(exportDir);
+    const { log, actions } = fakeActions(exportDir);
+    const pilot = new CapcutPilot({ root: f.root, actions, settings: { tile: { x: 5, y: 5 }, launchSeconds: 0, openSeconds: 0, dialogSeconds: 0, stableSeconds: 0, quitSeconds: 1 } });
+    const events = []; pilot.on('paused', e => events.push(e.paused));
+    assert.equal(pilot.pause(), false, 'aucune pause hors pilotage');
+    const first = pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir });
+    assert.equal(pilot.pause('La souris a bougé.'), true);
+    await new Promise(r => setTimeout(r, 60));
+    assert.deepEqual(log, ['quit'], 'CapCut n’est pas relancé pendant la pause');
+    assert.equal(pilot.resume(), true);
+    const [job] = await first;
+    assert.equal(job.status, 'done', job.error); assert.ok(log.includes('launch'));
+    assert.deepEqual(events, [true, false]);
+    const second = pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir });
+    pilot.pause(); await new Promise(r => setTimeout(r, 30)); pilot.stop();
+    const [stopped] = await second;
+    assert.equal(stopped.status, 'cancelled'); assert.equal(pilot.paused, false);
+  } finally { f.cleanup(); }
+});

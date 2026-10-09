@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, protocol, Menu, Notification, screen, systemPreferences } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol, Menu, Notification, screen, systemPreferences, Tray, nativeImage, globalShortcut } from 'electron';
 import { Worker } from 'node:worker_threads';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,18 +10,24 @@ import { ExportQueue, findFfmpeg } from '../lib/export-queue.js';
 import { CapcutPilot, DEFAULT_PILOT } from '../lib/capcut-pilot.js';
 import { macActions, CAPCUT_ID } from '../lib/mac-automation.js';
 import { waveform } from '../lib/waveform.js';
+import { TRAY_ICON_PNG } from './tray-icon.js';
 
 const media = new MediaServer();
 protocol.registerSchemesAsPrivileged([{ scheme: 'elpo-media', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }]);
 app.setName('ElpoAiAutoCapcut');
 const mac = process.platform === 'darwin';
 const page = fileURLToPath(new URL('../renderer/index.html', import.meta.url));
+const hudPage = fileURLToPath(new URL('../renderer/hud.html', import.meta.url));
+const aimPage = fileURLToPath(new URL('../renderer/aim.html', import.meta.url));
+const overlayPreload = fileURLToPath(new URL('./preload-overlay.cjs', import.meta.url));
 let window, worker, root, busy = false, sequence = 0, initialized = false, workerFailed = false;
 const calls = new Map();
 let settingsPath;
 // Everything the app remembers between launches.
 let settings = { preferences: {}, visualFolders: {}, styles: {}, favorites: { transitions: [], effects: [], filters: [] }, exportSettings: {}, pilot: { ...DEFAULT_PILOT }, ffmpegPath: null, subtitles: {}, history: [] };
 let tool = null, queue = null, pilot = null;
+let hud = null, hudState = null, tray = null, trayTimer = 0, watch = null, automated = null, lastNote = null;
+let showMain = () => {};
 
 function startWorker() {
   worker = new Worker(new URL('../lib/worker.js', import.meta.url));
@@ -62,11 +68,46 @@ function dock() {
   if (!window || window.isDestroyed()) return;
   window.setProgressBar(live.length ? jobs.filter(j => j.status !== 'cancelled').reduce((n, j) => n + (j.progress || 0), 0) / Math.max(1, jobs.filter(j => j.status !== 'cancelled').length) : -1);
   if (mac) app.dock?.setBadge(live.length ? String(live.length) : '');
+  updateTray();
+}
+// Menu bar: progress as a title, running exports in the menu. Exports keep going when the window is closed.
+function makeTray() {
+  if (!mac || tray) return;
+  const image = nativeImage.createFromBuffer(Buffer.from(TRAY_ICON_PNG, 'base64'), { scaleFactor: 2 });
+  image.setTemplateImage(true);
+  tray = new Tray(image); tray.setToolTip('ElpoAiAutoCapcut'); updateTray();
+}
+function updateTray() {
+  if (!tray) return;
+  clearTimeout(trayTimer);
+  trayTimer = setTimeout(() => {
+    const jobs = [...(queue?.list() || []), ...(pilot?.list() || [])].filter(j => j.status !== 'cancelled');
+    const live = jobs.filter(j => ['queued', 'preparing', 'rendering', 'running'].includes(j.status));
+    const running = jobs.filter(j => ['preparing', 'rendering', 'running'].includes(j.status));
+    const pct = jobs.length ? jobs.reduce((n, j) => n + (j.progress || 0), 0) / jobs.length : 0;
+    tray.setTitle(live.length ? ` ${Math.round(pct * 100)} %` : '');
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: live.length ? `${live.length} export(s) en cours ou en attente` : 'Aucun export en cours', enabled: false },
+      ...running.slice(0, 6).map(j => ({ label: `${j.name} — ${Math.round((j.progress || 0) * 100)} %`, enabled: false })),
+      { type: 'separator' },
+      { label: 'Ouvrir la Salle de rendu', click: () => showMain('batch-room') },
+      { label: 'Tout arrêter', enabled: live.length > 0, click: () => { queue?.cancel(null); pilot?.stop(); } },
+      { type: 'separator' },
+      { role: 'quit', label: 'Quitter ElpoAiAutoCapcut' },
+    ]));
+  }, 300);
 }
 function finished(kind, jobs) {
   const done = jobs.filter(j => j.status === 'done'), failed = jobs.filter(j => j.status === 'failed');
   for (const j of done) if (!settings.history.some(h => h.id === j.id)) remember({ id: j.id, project: j.project, name: j.name, output: j.output, engine: kind, at: Date.now() });
-  if (Notification.isSupported() && jobs.length) new Notification({ title: kind === 'capcut' ? 'Export CapCut terminé' : 'Export ELPO terminé', body: `${done.length} vidéo(s) prête(s)${failed.length ? `, ${failed.length} en échec` : ''}.`, silent: false }).show();
+  if (Notification.isSupported() && jobs.length) {
+    // Kept in a variable so its click and action handlers survive garbage collection.
+    lastNote = new Notification({ title: kind === 'capcut' ? 'Export CapCut terminé' : 'Export ELPO terminé', body: `${done.length} vidéo(s) prête(s)${failed.length ? `, ${failed.length} à revoir` : ''}.`, silent: false,
+      actions: done.length ? [{ type: 'button', text: 'Afficher' }] : [] });
+    lastNote.on('click', () => showMain('batch-room'));
+    lastNote.on('action', () => { const output = done.at(-1)?.output; if (output && fs.existsSync(output)) shell.showItemInFolder(output); else showMain('batch-room'); });
+    lastNote.show();
+  }
   dock();
 }
 function makePilot() {
@@ -75,10 +116,83 @@ function makePilot() {
   pilot?.stop(); pilot = null;
   // No pilot until a CapCut projects folder is open (FFmpeg can be detected before that).
   if (!initialized) return;
-  pilot = new CapcutPilot({ root, backupDir: path.join(app.getPath('userData'), 'backups'), settings: settings.pilot, actions: macActions({ ffprobe: tool?.ffprobe, trusted: () => !mac || systemPreferences.isTrustedAccessibilityClient(false) }) });
-  pilot.on('update', jobs => { send('pilot', jobs); dock(); });
+  const base = macActions({ ffprobe: tool?.ffprobe, trusted: () => !mac || systemPreferences.isTrustedAccessibilityClient(false) });
+  const actions = { ...base, click: (point, double) => { automated = { x: point.x, y: point.y, at: Date.now() }; return base.click(point, double); } };
+  pilot = new CapcutPilot({ root, backupDir: path.join(app.getPath('userData'), 'backups'), settings: settings.pilot, actions });
+  pilot.on('update', jobs => { send('pilot', jobs); dock(); pilotHud(jobs); });
   pilot.on('log', line => send('pilotLog', line));
-  pilot.on('idle', jobs => { finished('capcut', jobs); send('pilot', jobs); });
+  pilot.on('paused', state => { send('pilotPaused', state); if (hudState) showHud({ ...hudState, paused: state.paused, reason: state.reason }); });
+  pilot.on('idle', jobs => { pilotWatch(false); hideHud(); finished('capcut', jobs); send('pilot', jobs); });
+}
+
+// HUD above CapCut while the pilot runs: click-through, never takes the focus.
+function hudWindow() {
+  if (hud && !hud.isDestroyed()) return hud;
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea, width = 600, height = 196;
+  hud = new BrowserWindow({ width, height, x: Math.round(area.x + (area.width - width) / 2), y: area.y + 10, frame: false, transparent: true, resizable: false, movable: false,
+    focusable: false, skipTaskbar: true, hasShadow: false, show: false, alwaysOnTop: true,
+    webPreferences: { preload: overlayPreload, contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false } });
+  hud.setAlwaysOnTop(true, 'screen-saver'); hud.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); hud.setIgnoreMouseEvents(true);
+  hud.webContents.setWindowOpenHandler(() => ({ action: 'deny' })); hud.webContents.on('will-navigate', e => e.preventDefault());
+  hud.webContents.on('did-finish-load', () => { if (hudState) hud.webContents.send('overlay:state', hudState); });
+  hud.loadFile(hudPage);
+  return hud;
+}
+function showHud(state) {
+  hudState = state;
+  const w = hudWindow();
+  if (!w.webContents.isLoading()) w.webContents.send('overlay:state', state);
+  if (!w.isVisible()) w.showInactive();
+}
+function hideHud() { hudState = null; if (hud && !hud.isDestroyed()) hud.hide(); }
+function pilotHud(jobs) {
+  const index = jobs.findIndex(j => j.status === 'running');
+  if (index < 0) return;
+  const job = jobs[index];
+  pilotWatch(true);
+  showHud({ name: job.name, index: index + 1, total: jobs.length, stage: job.stage, progress: job.progress, paused: !!pilot?.paused, reason: hudState?.reason });
+}
+// While the pilot runs: ⌥⌘. stops, ⌥⌘R resumes, and a mouse move by the user pauses before the next action.
+function pilotWatch(on) {
+  if (on && watch) return;
+  clearInterval(watch); watch = null;
+  if (!on) { globalShortcut.unregister('Alt+Command+.'); globalShortcut.unregister('Alt+Command+R'); return; }
+  try { globalShortcut.register('Alt+Command+.', () => pilot?.stop()); globalShortcut.register('Alt+Command+R', () => pilot?.resume()); } catch { /* shortcut taken by another app */ }
+  let last = screen.getCursorScreenPoint();
+  watch = setInterval(() => {
+    const now = screen.getCursorScreenPoint();
+    const moved = Math.hypot(now.x - last.x, now.y - last.y) > 4;
+    const ours = automated && (Date.now() - automated.at < 1500 || (Math.abs(now.x - automated.x) <= 2 && Math.abs(now.y - automated.y) <= 2));
+    if (moved && !ours) pilot?.pause('La souris a bougé : ELPO attend avant sa prochaine action dans CapCut.');
+    last = now;
+  }, 250);
+}
+
+// Aiming sight: transparent window over the display under the pointer. Resolves with the point, or null.
+function aimAt(target) {
+  return new Promise(resolve => {
+    const b = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).bounds;
+    const sight = new BrowserWindow({ x: b.x, y: b.y, width: b.width, height: b.height, frame: false, transparent: true, resizable: false, movable: false, skipTaskbar: true,
+      hasShadow: false, alwaysOnTop: true, enableLargerThanScreen: true, show: false,
+      webPreferences: { preload: overlayPreload, contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false } });
+    sight.setAlwaysOnTop(true, 'screen-saver'); sight.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    sight.webContents.setWindowOpenHandler(() => ({ action: 'deny' })); sight.webContents.on('will-navigate', e => e.preventDefault());
+    let done = false;
+    const finish = point => {
+      if (done) return; done = true;
+      ipcMain.removeListener('overlay:aimed', aimed); ipcMain.removeListener('overlay:cancel', cancel);
+      if (!sight.isDestroyed()) sight.destroy();
+      resolve(point);
+    };
+    const mine = event => event.sender === sight.webContents;
+    // The point is the real cursor position, read here rather than trusted from the page.
+    const aimed = event => { if (mine(event)) { const p = screen.getCursorScreenPoint(); finish({ x: Math.round(p.x), y: Math.round(p.y) }); } };
+    const cancel = event => { if (mine(event)) finish(null); };
+    ipcMain.on('overlay:aimed', aimed); ipcMain.on('overlay:cancel', cancel);
+    sight.on('closed', () => finish(null));
+    sight.webContents.once('did-finish-load', () => { sight.webContents.send('overlay:state', { target }); sight.show(); sight.focus(); });
+    sight.loadFile(aimPage);
+  });
 }
 async function prepareTools() {
   tool = await findFfmpeg(settings.ffmpegPath);
@@ -92,7 +206,7 @@ function menu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(mac ? [{ label: app.name, submenu: [{ role: 'about', label: 'À propos d’ElpoAiAutoCapcut' }, { type: 'separator' }, { label: 'Réglages…', accelerator: 'Cmd+,', click: go('settings') }, { type: 'separator' }, { role: 'hide', label: 'Masquer ElpoAiAutoCapcut' }, { role: 'hideOthers', label: 'Masquer les autres' }, { role: 'unhide', label: 'Tout afficher' }, { type: 'separator' }, { role: 'quit', label: 'Quitter ElpoAiAutoCapcut' }] }] : []),
     { label: 'Édition', submenu: [{ role: 'undo', label: 'Annuler' }, { role: 'redo', label: 'Rétablir' }, { type: 'separator' }, { role: 'cut', label: 'Couper' }, { role: 'copy', label: 'Copier' }, { role: 'paste', label: 'Coller' }, { role: 'selectAll', label: 'Tout sélectionner' }] },
-    { label: 'Studio', submenu: [{ label: 'Projets', accelerator: 'CmdOrCtrl+1', click: go('library') }, { label: 'Montage complet', accelerator: 'CmdOrCtrl+2', click: go('build') }, { label: 'Production en lot', accelerator: 'CmdOrCtrl+3', click: go('batch') }, { label: 'Bibliothèque', accelerator: 'CmdOrCtrl+4', click: go('library-fx') }, { label: 'Sauvegardes', accelerator: 'CmdOrCtrl+5', click: go('vault') }, { type: 'separator' }, { label: 'Palette de commandes', accelerator: 'CmdOrCtrl+K', click: go('palette') }, { label: 'Ouvrir CapCut', accelerator: 'CmdOrCtrl+Shift+O', click: go('open-capcut') }] },
+    { label: 'Studio', submenu: [{ label: 'Projets', accelerator: 'CmdOrCtrl+1', click: go('library') }, { label: 'Plateau (montage complet)', accelerator: 'CmdOrCtrl+2', click: go('build') }, { label: 'Production en lot', accelerator: 'CmdOrCtrl+3', click: go('batch') }, { label: 'Salle de rendu', click: go('batch-room') }, { label: 'Bibliothèque', accelerator: 'CmdOrCtrl+4', click: go('library-fx') }, { label: 'Coffre (sauvegardes)', accelerator: 'CmdOrCtrl+5', click: go('vault') }, { type: 'separator' }, { label: 'Palette de commandes', accelerator: 'CmdOrCtrl+K', click: go('palette') }, { label: 'Ouvrir CapCut', accelerator: 'CmdOrCtrl+Shift+O', click: go('open-capcut') }] },
     { label: 'Présentation', submenu: [{ role: 'togglefullscreen', label: 'Plein écran' }, { role: 'resetZoom', label: 'Taille réelle' }, { role: 'zoomIn', label: 'Agrandir' }, { role: 'zoomOut', label: 'Réduire' }] },
     { role: 'windowMenu', label: 'Fenêtre' },
   ]));
@@ -110,7 +224,7 @@ else {
     if (fs.existsSync(root)) await selectRoot(root);
     menu();
 
-    register('elpo:status', async () => { const r = await invoke('running'); return ok({ root, initialized, preferences: settings.preferences, styles: settings.styles, favorites: settings.favorites, exportSettings: settings.exportSettings, pilot: settings.pilot, subtitles: settings.subtitles, history: settings.history.slice(0, 100), version: app.getVersion(), platform: process.platform, running: r.ok ? r.result : 'unknown', ffmpeg: tool, moviesDir: movies() }); });
+    register('elpo:status', async () => { const r = await invoke('running'); return ok({ root, initialized, preferences: settings.preferences, styles: settings.styles, favorites: settings.favorites, exportSettings: settings.exportSettings, pilot: settings.pilot, subtitles: settings.subtitles, history: settings.history.slice(0, 100), version: app.getVersion(), platform: process.platform, running: r.ok ? r.result : 'unknown', ffmpeg: tool, moviesDir: movies(), access: !mac || systemPreferences.isTrustedAccessibilityClient(false) }); });
     register('elpo:chooseRoot', async () => {
       if (busy || pilotRunning()) throw new Error('Une opération est en cours.');
       const picked = await dialog.showOpenDialog(window, { title: 'Dossier contenant les projets CapCut', properties: ['openDirectory'], defaultPath: fs.existsSync(root) ? root : movies() });
@@ -159,6 +273,20 @@ else {
       return setFlowFolder(project, picked.filePaths[0]);
     });
     register('elpo:clearFlowFolder', project => setFlowFolder(project, null));
+    // Drag and drop: the window only sends the path of what was dropped; only folders, .srt and .json are read.
+    register('elpo:dropped', async file => {
+      if (typeof file !== 'string' || !path.isAbsolute(file)) throw new Error('Élément déposé invalide.');
+      const stat = fs.statSync(file);
+      if (stat.isDirectory()) return ok({ kind: 'folder', path: file, name: path.basename(file) });
+      const ext = path.extname(file).toLowerCase();
+      if (!stat.isFile() || !['.srt', '.json'].includes(ext)) throw new Error('Dépose un dossier d’images, un fichier .srt ou un plan .json.');
+      if (stat.size > 4e6) throw new Error('Fichier limité à 4 Mo.');
+      return ok({ kind: ext === '.srt' ? 'srt' : 'scenes', name: path.basename(file), path: file, text: fs.readFileSync(file, 'utf8') });
+    });
+    register('elpo:useFlowFolder', async ({ project, folder } = {}) => {
+      if (typeof folder !== 'string' || !path.isAbsolute(folder) || !fs.statSync(folder).isDirectory()) throw new Error('Dossier invalide.');
+      return setFlowFolder(project, folder);
+    });
     register('elpo:mediaSources', async project => {
       if (busy || !initialized || typeof project !== 'string') throw new Error('Sélectionne un projet disponible.');
       const reply = await invoke('inspect', { project });
@@ -276,15 +404,17 @@ else {
     let calibrating = false;
     register('elpo:pilotCalibrate', async target => {
       if (!['tile', 'exportButton'].includes(target)) throw new Error('Cible inconnue.');
-      if (pilotRunning()) throw new Error('Pilotage en cours : attends sa fin avant de calibrer.');
-      if (calibrating) throw new Error('Un calibrage est déjà en cours.');
+      if (pilotRunning()) throw new Error('Pilotage en cours : attends sa fin avant de viser.');
+      if (calibrating) throw new Error('Une visée est déjà en cours.');
       calibrating = true;
       try {
-        // Five seconds to place the pointer over the target in CapCut.
-        for (let s = 5; s > 0; s--) { send('calibrate', { target, seconds: s }); await new Promise(r => setTimeout(r, 1000)); }
-        if (pilotRunning()) throw new Error('Un pilotage a démarré pendant le calibrage : position non enregistrée.');
-        const point = screen.getCursorScreenPoint();
-        settings.pilot = { ...settings.pilot, [target]: point }; saveSettings(); makePilot(); window?.focus();
+        // CapCut comes to the front when it is open, then the sight covers the screen.
+        if (mac) { const actions = macActions(); if (await actions.isRunning().catch(() => false)) await actions.activate().catch(() => null); }
+        const point = await aimAt(target);
+        window?.show(); window?.focus();
+        if (!point) return ok(null);
+        if (pilotRunning()) throw new Error('Un pilotage a démarré pendant la visée : position non enregistrée.');
+        settings.pilot = { ...settings.pilot, [target]: point }; saveSettings(); makePilot();
         return ok(settings.pilot);
       } finally { calibrating = false; }
     });
@@ -298,6 +428,7 @@ else {
       return ok(true);
     });
     register('elpo:pilotStop', async () => { pilot?.stop(); return ok(true); });
+    register('elpo:pilotResume', async () => ok(!!pilot?.resume()));
 
     function createWindow() {
       window = new BrowserWindow({ width: 1360, height: 880, minWidth: 1080, minHeight: 720, title: 'ElpoAiAutoCapcut', show: false,
@@ -307,13 +438,24 @@ else {
       window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
       window.webContents.on('will-navigate', e => e.preventDefault()); window.loadFile(page);
     }
-    createWindow(); app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+    createWindow(); app.on('activate', () => { if (!window || window.isDestroyed()) createWindow(); });
+    showMain = command => {
+      const fresh = !window || window.isDestroyed();
+      if (fresh) createWindow();
+      if (window.isMinimized()) window.restore();
+      window.show(); window.focus();
+      if (command) { if (fresh) window.webContents.once('did-finish-load', () => send('command', command)); else send('command', command); }
+    };
+    makeTray();
   });
   app.on('before-quit', event => {
     if (busy || queue?.active() || pilotRunning()) {
       event.preventDefault();
-      dialog.showMessageBoxSync(window, { message: 'Une génération ou un export est en cours. Attends sa fin ou annule-le avant de quitter.', type: 'info' });
+      // The window may be closed (exports keep running from the menu bar).
+      const options = { message: 'Une génération ou un export est en cours. Attends sa fin ou annule-le avant de quitter.', type: 'info' };
+      if (window && !window.isDestroyed()) dialog.showMessageBoxSync(window, options); else dialog.showMessageBoxSync(options);
     }
   });
   app.on('window-all-closed', () => { if (!mac) app.quit(); });
+  app.on('will-quit', () => globalShortcut.unregisterAll());
 }

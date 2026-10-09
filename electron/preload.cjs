@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const call = channel => value => ipcRenderer.invoke(channel, value);
 contextBridge.exposeInMainWorld('elpo', {
   status: call('elpo:status'),
@@ -30,5 +30,10 @@ contextBridge.exposeInMainWorld('elpo', {
   pilotCalibrate: call('elpo:pilotCalibrate'),
   pilotStart: call('elpo:pilotStart'),
   pilotStop: call('elpo:pilotStop'),
+  pilotResume: call('elpo:pilotResume'),
+  dropped: call('elpo:dropped'),
+  useFlowFolder: call('elpo:useFlowFolder'),
+  // Path of a file dropped on the window (Electron 32: File.path is gone, webUtils replaces it).
+  pathForFile: file => { try { return webUtils.getPathForFile(file) || null; } catch { return null; } },
   on: callback => { const listener = (_event, message) => callback(message); ipcRenderer.on('elpo:event', listener); return () => ipcRenderer.removeListener('elpo:event', listener); },
 });

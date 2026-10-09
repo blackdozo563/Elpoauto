@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'">
+<title>Viser une cible</title><link rel="stylesheet" href="overlay.css"></head>
+<body>
+<div class="sight" id="sight"></div>
+<div class="line h" id="lineH" hidden></div><div class="line v" id="lineV" hidden></div>
+<div class="target" id="target" hidden></div><div class="coords" id="coords" hidden></div>
+<section class="card" aria-live="polite">
+  <span class="eyebrow" id="step">Pilotage CapCut · visée</span>
+  <h1 id="title">Vise la cible</h1>
+  <p id="text">Clique au centre de la cible. <kbd>Échap</kbd> annule.</p>
+</section>
+<script src="aim.js"></script>
+</body></html>

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'">
+<title>Pilotage CapCut</title><link rel="stylesheet" href="overlay.css"></head>
+<body>
+<section class="hud" id="hud" aria-live="polite">
+  <div class="hud-top">
+    <div class="ring"><svg viewBox="0 0 64 64" aria-hidden="true"><circle class="track" cx="32" cy="32" r="27"/><circle class="value" id="ring" cx="32" cy="32" r="27" stroke-dasharray="169.6" stroke-dashoffset="169.6"/></svg><span id="pct">0 %</span></div>
+    <div class="hud-text">
+      <span class="eyebrow" id="eyebrow">Pilotage CapCut</span>
+      <h1 id="name">Préparation…</h1>
+      <span class="stage" id="stage"></span>
+    </div>
+  </div>
+  <ol class="steps" id="steps" aria-label="Étapes du projet en cours"></ol>
+  <div class="hint" id="hint">ELPO tient la souris et le clavier. Bouge la souris pour mettre en pause · <kbd>⌥⌘.</kbd> arrête le lot.</div>
+</section>
+<script src="hud.js"></script>
+</body></html>

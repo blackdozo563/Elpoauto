@@ -23,34 +23,33 @@
   <symbol id="i-stop" viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" rx="1.5" fill="currentColor"/></symbol>
   <symbol id="i-target" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.5"/><path d="M10 1v3M10 16v3M1 10h3M16 10h3"/></symbol>
   <symbol id="i-x" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 20 20"><rect x="5" y="4" width="3.5" height="12" rx="1" fill="currentColor"/><rect x="11.5" y="4" width="3.5" height="12" rx="1" fill="currentColor"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 20 20"><path d="M10 13V3M6 7l4-4 4 4M3 13v2.5A1.5 1.5 0 0 0 4.5 17h11a1.5 1.5 0 0 0 1.5-1.5V13"/></symbol>
   <symbol id="i-cut" viewBox="0 0 20 20"><circle cx="5" cy="15" r="2.4"/><circle cx="15" cy="15" r="2.4"/><path d="M6.7 13.3 15 3M13.3 13.3 5 3"/></symbol>
 </svg>
 
-<aside class="sidebar">
+<aside class="rail" aria-label="Navigation">
   <div class="drag-strip"></div>
-  <div class="brand"><svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10"/><path d="M11 11h11v3H14.5v4.5h6.5v3h-6.5V26H22v3H11z"/><path d="m25 15.5 6 4.5-6 4.5z"/></svg><div><strong>Elpo</strong><span>AutoCapcut</span></div></div>
-  <div class="side-label" id="modesLabel">Modes</div>
-  <div class="modes" role="tablist" aria-labelledby="modesLabel">
-    <button class="mode" data-page="build" role="tab"><svg class="ico"><use href="#i-build"/></svg><span class="mode-text"><span class="mode-name">Montage complet</span><span class="mode-meta" id="modeBuildMeta">Choisis un projet</span></span><kbd>⌘2</kbd></button>
-    <button class="mode" data-page="batch" role="tab"><svg class="ico"><use href="#i-batch"/></svg><span class="mode-text"><span class="mode-name">Production en lot</span><span class="mode-meta" id="modeBatchMeta">Aucun projet coché</span></span><kbd>⌘3</kbd></button>
-  </div>
-  <nav class="side-nav" aria-label="Navigation">
-    <button class="nav" data-page="library"><svg class="ico"><use href="#i-grid"/></svg>Projets<span class="count" id="navProjects"></span></button>
-    <button class="nav" data-page="fx"><svg class="ico"><use href="#i-fx"/></svg>Bibliothèque<span class="count" id="navFx"></span></button>
-    <button class="nav" data-page="vault"><svg class="ico"><use href="#i-vault"/></svg>Sauvegardes</button>
-    <button class="nav" data-page="settings"><svg class="ico"><use href="#i-gear"/></svg>Réglages</button>
+  <div class="brand" title="ElpoAiAutoCapcut"><svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10"/><path d="M11 11h11v3H14.5v4.5h6.5v3h-6.5V26H22v3H11z"/><path d="m25 15.5 6 4.5-6 4.5z"/></svg></div>
+  <nav class="rail-nav" aria-label="Pages">
+    <button class="nav" data-page="library"><span class="nav-ico"><svg class="ico"><use href="#i-grid"/></svg><span class="count" id="navProjects"></span></span><span class="nav-label">Projets</span></button>
+    <button class="nav mode" data-page="build"><span class="nav-ico"><svg class="ico"><use href="#i-build"/></svg></span><span class="nav-label">Plateau</span><span class="sr" id="modeBuildMeta">Choisis un projet</span></button>
+    <button class="nav mode" data-page="batch"><span class="nav-ico"><svg class="ico"><use href="#i-batch"/></svg><span class="count live" id="navJobs"></span></span><span class="nav-label">Rendu</span><span class="sr" id="modeBatchMeta">Aucun projet coché</span></button>
+    <button class="nav" data-page="fx"><span class="nav-ico"><svg class="ico"><use href="#i-fx"/></svg><span class="count" id="navFx"></span></span><span class="nav-label">Biblio</span></button>
+    <button class="nav" data-page="vault"><span class="nav-ico"><svg class="ico"><use href="#i-vault"/></svg></span><span class="nav-label">Coffre</span></button>
+    <button class="nav" data-page="settings"><span class="nav-ico"><svg class="ico"><use href="#i-gear"/></svg></span><span class="nav-label">Réglages</span></button>
   </nav>
-  <div class="side-foot">
-    <div id="queueMini" class="queue-mini" hidden><div class="queue-mini-row"><span id="queueMiniText">Export</span><span id="queueMiniPct">0 %</span></div><div class="bar"><i id="queueMiniBar"></i></div></div>
-    <div class="health"><span id="capcutDot" class="dot"></span><span id="capcutLine">CapCut : vérification…</span></div>
-    <div class="health"><span id="ffmpegDot" class="dot"></span><span id="ffmpegLine">FFmpeg : recherche…</span></div>
-    <div class="version" id="version">Édition locale 0.5.0</div>
+  <div class="rail-foot">
+    <button id="queueMini" class="queue-ring" hidden><span class="ring"><i id="queueMiniBar"></i></span><span id="queueMiniPct">0 %</span><span class="sr" id="queueMiniText">Exports</span></button>
+    <div class="health"><span id="capcutDot" class="dot"></span><span id="capcutLine">CapCut…</span></div>
+    <div class="health"><span id="ffmpegDot" class="dot"></span><span id="ffmpegLine">FFmpeg…</span></div>
+    <div class="version" id="version">0.6.0</div>
   </div>
 </aside>
 
 <main>
   <header class="topbar">
-    <h1 id="pageTitle">Projets</h1>
+    <div class="title-block"><span id="pageEyebrow" class="eyebrow">Tous tes projets CapCut</span><h1 id="pageTitle">Projets</h1></div>
     <label class="switcher" title="Projet actif"><svg class="ico"><use href="#i-film"/></svg><select id="projectSelect" aria-label="Projet actif"><option value="">Aucun projet actif</option></select></label>
     <div class="top-actions"><span id="status" class="pill">Vérification de CapCut…</span><button id="openCapcut" class="btn ghost"><svg class="ico"><use href="#i-open"/></svg>Ouvrir CapCut</button><button id="paletteButton" class="btn ghost kbd-btn" title="Palette de commandes"><svg class="ico"><use href="#i-search"/></svg><kbd>⌘K</kbd></button></div>
   </header>
@@ -70,33 +69,26 @@
     <div id="libraryEmpty" class="empty-state" hidden><svg class="ico big"><use href="#i-folder"/></svg><h2 id="libraryEmptyTitle">Aucun projet ici</h2><p>Crée ou duplique un projet dans CapCut avec ta voix off, ferme CapCut, puis actualise. Si tes projets sont ailleurs, change de dossier.</p><button class="btn primary" data-run="chooseRoot">Choisir le dossier des projets</button></div>
   </section>
 
-  <!-- MONTAGE COMPLET -->
-  <section class="page" id="page-build" data-title="Montage complet">
+  <!-- PLATEAU : MONTAGE COMPLET -->
+  <section class="page" id="page-build" data-title="Plateau">
     <div class="project-head">
       <div id="projectCover" class="project-cover"></div>
       <div class="project-meta"><h2 id="projectName">Aucun projet actif</h2><p id="projectInfo">Choisis un projet dans Projets ou dans le sélecteur en haut.</p></div>
-      <ol class="stepper" id="stepper">
-        <li><button data-step="media"><b>1</b>Médias</button></li>
-        <li><button data-step="scenes"><b>2</b>Scènes</button></li>
-        <li><button data-step="style"><b>3</b>Style</button></li>
-        <li><button data-step="review"><b>4</b>Vérifier</button></li>
-        <li><button data-step="deliver"><b>5</b>Générer &amp; exporter</button></li>
-      </ol>
+      <ol class="readiness" id="readiness" aria-label="Préparation du montage"></ol>
     </div>
 
-    <div class="step-body">
-    <!-- 1 MÉDIAS -->
-    <div class="step" id="step-media">
-      <div class="cols two">
+    <div class="plateau">
+      <!-- CHUTIER : visuels et son, toujours visibles -->
+      <aside class="chutier" id="step-media" aria-label="Chutier">
         <div class="panel">
-          <div class="panel-head"><h3>Visuels</h3><span id="mediaCount" class="subtle">Aucun projet sélectionné</span></div>
+          <div class="panel-head"><h3>Chutier</h3><span id="mediaCount" class="subtle">Aucun projet sélectionné</span></div>
           <div class="source-switch">
             <div class="source-text"><strong id="sourceTitle">Chutier CapCut</strong><span id="flowFolder" class="path">Les visuels importés dans CapCut sont utilisés.</span></div>
-            <button id="chooseFlowFolder" class="btn" disabled><svg class="ico"><use href="#i-folder"/></svg>Dossier d’images</button>
-            <button id="clearFlowFolder" class="link" hidden>Revenir au chutier</button>
+            <button id="chooseFlowFolder" class="btn" disabled><svg class="ico"><use href="#i-folder"/></svg>Dossier</button>
           </div>
-          <p class="hint">PNG, JPEG ou WebP fixes. Les noms 001, 002, 010 fixent l’ordre. Le dossier n’est pas copié : garde-le à sa place.</p>
+          <button id="clearFlowFolder" class="link back-link" hidden>Revenir au chutier CapCut</button>
           <div id="mediaList" class="media-grid"><p class="hint">Sélectionne un projet pour voir ses médias.</p></div>
+          <p class="hint drop-hint"><svg class="ico"><use href="#i-drop"/></svg>Dépose un dossier d’images, un SRT ou un plan JSON sur la fenêtre.</p>
         </div>
         <div class="panel">
           <div class="panel-head"><h3>Son</h3></div>
@@ -104,152 +96,164 @@
           <select id="audio"><option value="">Choisis la voix off</option></select>
           <label for="music">Musique de fond</label>
           <select id="music"><option value="">Aucune musique</option></select>
-          <div id="musicBox" class="slider-row" hidden><label for="musicVolume">Volume de la musique</label><input id="musicVolume" type="range" min="2" max="100" value="20"><output id="musicVolumeValue">20 %</output></div>
+          <div id="musicBox" class="slider-row" hidden><label for="musicVolume">Volume</label><input id="musicVolume" type="range" min="2" max="100" value="20"><output id="musicVolumeValue">20 %</output></div>
           <label for="videoVolume">Son des clips vidéo</label>
           <div class="slider-row"><input id="videoVolume" type="range" min="0" max="100" value="0"><output id="volumeValue">0 %</output></div>
-          <p class="hint">La voix off reste à son niveau d’origine. La musique est répétée ou coupée pour couvrir exactement la voix off.</p>
-          <div class="guard"><svg class="ico"><use href="#i-check"/></svg><div><strong>Écriture protégée</strong><p>Médias vérifiés, aperçu avant écriture, sauvegarde des fichiers modifiés. La timeline du projet doit être vide.</p></div></div>
+          <div class="guard"><svg class="ico"><use href="#i-check"/></svg><div><strong>Écriture protégée</strong><p>Aperçu avant écriture, sauvegarde des fichiers modifiés, timeline vide obligatoire.</p></div></div>
         </div>
-      </div>
-    </div>
+      </aside>
 
-    <!-- 2 SCÈNES -->
-    <div class="step" id="step-scenes" hidden>
-      <input type="hidden" id="placement" value="sync">
-      <div class="placement-cards" id="placementCards" role="radiogroup" aria-label="Organisation des scènes">
-        <button data-placement="sync"><strong>Plan éditable</strong><span>Scènes depuis le SRT ou les médias, raccords ajustables</span></button>
-        <button data-placement="even"><strong>Durées égales</strong><span>Ordre naturel des noms, même durée pour chaque visuel</span></button>
-        <button data-placement="timecode"><strong>Horaires dans les noms</strong><span>0-00.png, 0-20.png, 1-05-243.png</span></button>
-        <button data-placement="srt"><strong>Un visuel par bloc SRT</strong><span>Autant de blocs que de visuels</span></button>
-        <button data-placement="timestamps"><strong>Liste d’horaires</strong><span>Un départ par visuel, collé ici</span></button>
-        <button data-placement="scenes"><strong>Plan JSON</strong><span>Fichier, début et fin explicites</span></button>
-      </div>
-      <p id="placementHint" class="hint lead"></p>
-      <div class="cols two-one">
-        <div class="panel" id="syncPanel">
-          <div class="panel-head"><h3>Plan des scènes</h3><span id="syncSummary" class="subtle">Aucun plan</span></div>
-          <div class="sync-toolbar">
-            <label class="inline">Durée cible <input id="targetSeconds" type="number" min="2" max="30" step="1" value="6"> s</label>
-            <button id="groupSrt" class="btn">Proposer depuis le SRT</button>
-            <button id="createEven" class="btn">Partir des médias</button>
-            <button id="assignOrder" class="btn ghost">Associer par ordre des noms</button>
-            <button id="saveSync" class="btn ghost">Enregistrer le plan</button>
+      <!-- VISIONNEUSE : le montage en mouvement -->
+      <section class="stage-col" aria-label="Visionneuse">
+        <div class="player">
+          <div id="stage" class="player-stage"><img id="playerImage" alt="Visuel de la scène" hidden><video id="playerVideo" muted playsinline hidden></video><span id="playerEmpty">Analyse le projet : le montage apparaîtra ici, en mouvement.</span><span id="playerBadge" class="player-badge"></span><span class="live-badge" id="liveBadge" hidden>Aperçu vivant</span></div>
+          <div class="transport"><button id="playToggle" class="round" aria-label="Lecture"><svg class="ico"><use href="#i-play"/></svg></button><span id="playerClock" class="timecode">0:00.000</span><span class="transport-hint">Espace : lecture · ⌘↩ : analyser</span><audio id="voicePlayer" preload="metadata"></audio></div>
+        </div>
+        <div class="stage-info">
+          <p id="playerScene" class="scene-label">Voix off</p>
+          <p id="playerText" class="player-text"></p>
+          <div id="stats" class="stats"></div>
+          <p id="playerError" class="alert" hidden></p>
+        </div>
+      </section>
+
+      <!-- INSPECTEUR : scènes, style, vérification, écriture -->
+      <aside class="inspector" aria-label="Inspecteur">
+        <ol class="stepper" id="stepper">
+          <li><button data-step="scenes"><b>1</b>Scènes</button></li>
+          <li><button data-step="style"><b>2</b>Style</button></li>
+          <li><button data-step="review"><b>3</b>Vérifier</button></li>
+          <li><button data-step="deliver"><b>4</b>Écrire</button></li>
+        </ol>
+        <div class="step-body">
+        <!-- SCÈNES -->
+        <div class="step" id="step-scenes">
+          <input type="hidden" id="placement" value="sync">
+          <div class="placement-cards" id="placementCards" role="radiogroup" aria-label="Organisation des scènes">
+            <button data-placement="sync"><strong>Plan éditable</strong><span>SRT ou médias, raccords ajustables</span></button>
+            <button data-placement="even"><strong>Durées égales</strong><span>Ordre naturel des noms</span></button>
+            <button data-placement="timecode"><strong>Horaires dans les noms</strong><span>0-00.png, 0-20.png…</span></button>
+            <button data-placement="srt"><strong>Un visuel par bloc SRT</strong><span>Autant de blocs que de visuels</span></button>
+            <button data-placement="timestamps"><strong>Liste d’horaires</strong><span>Un départ par visuel</span></button>
+            <button data-placement="scenes"><strong>Plan JSON</strong><span>Début et fin explicites</span></button>
           </div>
-          <div id="syncRows" class="sync-rows"></div>
-          <div id="syncPages" class="pagination"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h3>Repères</h3></div>
-          <div class="file-line"><svg class="ico"><use href="#i-wave"/></svg><div><strong>Sous-titres SRT</strong><span id="srtName" class="hint">Phrases et pauses proposent les raccords. Le SRT peut aussi être incrusté à l’export.</span></div><button id="loadSrt" class="btn">Charger</button><button id="clearSrt" class="link" hidden>Retirer</button></div>
-          <div class="file-line"><svg class="ico"><use href="#i-grid"/></svg><div><strong>Plan JSON</strong><span id="scenesName" class="hint">Reprends un plan enregistré.</span></div><button id="loadScenes" class="btn">Charger</button><button id="clearScenes" class="link" hidden>Retirer</button></div>
-          <div id="timestampsBox" hidden><label for="timestampsText">Un horaire par visuel, dans l’ordre des noms</label><textarea id="timestampsText" rows="5" placeholder="00:00:00,000&#10;00:00:10,000&#10;00:00:20,000"></textarea></div>
-          <label for="videoPolicy">Vidéo plus courte que sa scène</label>
-          <select id="videoPolicy"><option value="reject">Bloquer et me prévenir</option><option value="repeat">Répéter le clip pour couvrir la scène</option></select>
-        </div>
-      </div>
-    </div>
-
-    <!-- 3 STYLE -->
-    <div class="step" id="step-style" hidden>
-      <div class="style-bar">
-        <label class="inline">Style <select id="styleSelect" aria-label="Style enregistré"><option value="">Réglages actuels</option></select></label>
-        <button id="saveStyle" class="btn ghost">Enregistrer comme style</button>
-        <button id="deleteStyle" class="link" hidden>Supprimer ce style</button>
-        <button id="savePreset" class="btn ghost">Définir par défaut</button>
-      </div>
-      <div class="panel">
-        <div class="panel-head"><h3>Mouvement</h3><div class="slider-row compact"><label for="amount">Amplitude</label><input id="amount" type="range" min="0" max="25" value="6"><output id="amountValue">6 %</output></div></div>
-        <input type="hidden" id="motion" value="none">
-        <div class="motion-grid" id="motionGrid"></div>
-      </div>
-      <div class="cols three">
-        <div class="panel fx-pick" data-kind="transitions">
-          <div class="panel-head"><h3>Transitions</h3><button id="refreshTransitions" class="link">Actualiser</button></div>
-          <label class="toggle"><input type="checkbox" id="favTransitions"><span id="favTransitionsLabel">Mes favoris automatiquement</span></label>
-          <div class="search small"><svg class="ico"><use href="#i-search"/></svg><input id="transitionSearch" type="search" placeholder="Filtrer" aria-label="Filtrer les transitions"></div>
-          <div id="transitions" class="chips"></div>
-          <div class="inline-fields"><label class="inline">Durée <input id="transitionSeconds" type="number" min="0.05" max="3" step="0.05" value="0.5"> s</label>
-          <label class="inline">Ordre <select id="transitionOrder"><option value="cycle">En boucle</option><option value="shuffle">Varié</option></select></label></div>
-        </div>
-        <div class="panel fx-pick" data-kind="effects">
-          <div class="panel-head"><h3>Effets</h3></div>
-          <label class="toggle"><input type="checkbox" id="favEffects"><span id="favEffectsLabel">Mes favoris automatiquement</span></label>
-          <div id="effects" class="chips"></div>
-          <label class="inline">Appliquer <select id="effectScope"><option value="all">À chaque scène</option><option value="alternate">Une scène sur deux</option><option value="first">Première scène</option><option value="last">Dernière scène</option><option value="global">Sur toute la vidéo</option></select></label>
-        </div>
-        <div class="panel fx-pick" data-kind="filters">
-          <div class="panel-head"><h3>Filtres</h3></div>
-          <label class="toggle"><input type="checkbox" id="favFilters"><span id="favFiltersLabel">Mes favoris automatiquement</span></label>
-          <div id="filters" class="chips"></div>
-          <label class="inline">Appliquer <select id="filterScope"><option value="global">Sur toute la vidéo</option><option value="all">À chaque scène</option></select></label>
-        </div>
-      </div>
-      <p class="hint">Effets, transitions et filtres viennent de tes projets CapCut : ressources déjà téléchargées, rejouées à l’identique par CapCut. Gère tes favoris dans Bibliothèque.</p>
-    </div>
-
-    <!-- 4 VÉRIFIER -->
-    <div class="step" id="step-review" hidden>
-      <div id="previewEmpty" class="empty-state compact"><svg class="ico big"><use href="#i-play"/></svg><h2>L’aperçu n’est pas encore prêt</h2><p>Analyse le projet : rien n’est écrit dans CapCut à cette étape.</p></div>
-      <div id="previewContent" hidden>
-        <div class="review">
-          <div class="player">
-            <div id="stage" class="player-stage"><img id="playerImage" alt="Visuel de la scène" hidden><video id="playerVideo" muted playsinline hidden></video><span id="playerEmpty">Lance la voix off pour voir les visuels.</span><span id="playerBadge" class="player-badge"></span></div>
-            <div class="transport"><button id="playToggle" class="round" aria-label="Lecture"><svg class="ico"><use href="#i-play"/></svg></button><span id="playerClock" class="timecode">0:00.000</span><audio id="voicePlayer" preload="metadata"></audio></div>
+          <p id="placementHint" class="hint lead"></p>
+          <div class="panel" id="syncPanel">
+            <div class="panel-head"><h3>Plan des scènes</h3><span id="syncSummary" class="subtle">Aucun plan</span></div>
+            <div class="sync-toolbar">
+              <label class="inline">Durée cible <input id="targetSeconds" type="number" min="2" max="30" step="1" value="6"> s</label>
+              <button id="groupSrt" class="btn">Depuis le SRT</button>
+              <button id="createEven" class="btn">Depuis les médias</button>
+              <button id="assignOrder" class="btn ghost">Associer par ordre</button>
+              <button id="saveSync" class="btn ghost">Enregistrer</button>
+            </div>
+            <div id="syncRows" class="sync-rows"></div>
+            <div id="syncPages" class="pagination"></div>
           </div>
-          <div class="review-side">
-            <p id="playerScene" class="scene-label">Voix off</p>
-            <p id="playerText" class="player-text"></p>
-            <div id="stats" class="stats"></div>
-            <p id="playerError" class="alert" hidden></p>
+          <div class="panel">
+            <div class="panel-head"><h3>Repères</h3></div>
+            <div class="file-line"><svg class="ico"><use href="#i-wave"/></svg><div><strong>Sous-titres SRT</strong><span id="srtName" class="hint">Phrases et pauses proposent les raccords. Le SRT peut aussi être incrusté à l’export.</span></div><button id="loadSrt" class="btn">Charger</button><button id="clearSrt" class="link" hidden>Retirer</button></div>
+            <div class="file-line"><svg class="ico"><use href="#i-grid"/></svg><div><strong>Plan JSON</strong><span id="scenesName" class="hint">Reprends un plan enregistré.</span></div><button id="loadScenes" class="btn">Charger</button><button id="clearScenes" class="link" hidden>Retirer</button></div>
+            <div id="timestampsBox" hidden><label for="timestampsText">Un horaire par visuel, dans l’ordre des noms</label><textarea id="timestampsText" rows="5" placeholder="00:00:00,000&#10;00:00:10,000&#10;00:00:20,000"></textarea></div>
+            <label for="videoPolicy">Vidéo plus courte que sa scène</label>
+            <select id="videoPolicy"><option value="reject">Bloquer et me prévenir</option><option value="repeat">Répéter le clip pour couvrir la scène</option></select>
           </div>
         </div>
-        <div class="cols two">
-          <div class="panel"><div class="panel-head"><h3>Points de contrôle</h3><button id="editSync" class="link">Corriger le plan</button></div><ul id="warnings" class="warnings"></ul><p id="writeFiles" class="hint"></p></div>
-          <div class="panel"><div class="panel-head"><h3>Déroulé</h3><span id="sceneCount" class="subtle"></span><button id="exportScenes" class="link" disabled>Exporter le plan JSON</button></div>
-            <div class="table-wrap"><table><thead><tr><th>#</th><th>Visuel</th><th>Début → fin</th><th>Durée</th><th>Clips</th><th>Texte</th></tr></thead><tbody id="sceneRows"></tbody></table></div><div id="pagination" class="pagination"></div></div>
-        </div>
-      </div>
-    </div>
 
-    <!-- 5 GÉNÉRER & EXPORTER -->
-    <div class="step" id="step-deliver" hidden>
-      <div class="deliver">
-        <div class="panel deliver-card" id="writeCard">
-          <span class="deliver-num">A</span>
-          <h3>Écrire la timeline dans CapCut</h3>
-          <p>CapCut doit être fermé. Les fichiers du projet sont sauvegardés, écrits puis vérifiés. Si le projet change après l’aperçu, l’écriture est refusée.</p>
-          <label class="check"><input id="confirm" type="checkbox"><span>J’ai vérifié l’aperçu et la timeline du projet est vide.</span></label>
-          <button id="build" class="btn primary wide" disabled>Générer dans CapCut</button>
-          <p id="buildHint" class="hint">L’écriture devient disponible après l’analyse.</p>
+        <!-- STYLE -->
+        <div class="step" id="step-style" hidden>
+          <div class="style-bar">
+            <select id="styleSelect" aria-label="Recette enregistrée"><option value="">Réglages actuels</option></select>
+            <button id="saveStyle" class="btn ghost">Enregistrer</button>
+            <button id="deleteStyle" class="link" hidden>Supprimer</button>
+            <button id="savePreset" class="link">Par défaut</button>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h3>Mouvement</h3><div class="slider-row compact"><label for="amount">Amplitude</label><input id="amount" type="range" min="0" max="25" value="6"><output id="amountValue">6 %</output></div></div>
+            <input type="hidden" id="motion" value="none">
+            <div class="motion-grid" id="motionGrid"></div>
+          </div>
+          <div class="panel fx-pick" data-kind="transitions">
+            <div class="panel-head"><h3>Transitions</h3><button id="refreshTransitions" class="link">Actualiser</button></div>
+            <label class="toggle"><input type="checkbox" id="favTransitions"><span id="favTransitionsLabel">Mes favoris automatiquement</span></label>
+            <div class="search small"><svg class="ico"><use href="#i-search"/></svg><input id="transitionSearch" type="search" placeholder="Filtrer" aria-label="Filtrer les transitions"></div>
+            <div id="transitions" class="chips"></div>
+            <div class="inline-fields"><label class="inline">Durée <input id="transitionSeconds" type="number" min="0.05" max="3" step="0.05" value="0.5"> s</label>
+            <label class="inline">Ordre <select id="transitionOrder"><option value="cycle">En boucle</option><option value="shuffle">Varié</option></select></label></div>
+          </div>
+          <div class="panel fx-pick" data-kind="effects">
+            <div class="panel-head"><h3>Effets</h3></div>
+            <label class="toggle"><input type="checkbox" id="favEffects"><span id="favEffectsLabel">Mes favoris automatiquement</span></label>
+            <div id="effects" class="chips"></div>
+            <label class="inline">Appliquer <select id="effectScope"><option value="all">À chaque scène</option><option value="alternate">Une scène sur deux</option><option value="first">Première scène</option><option value="last">Dernière scène</option><option value="global">Sur toute la vidéo</option></select></label>
+          </div>
+          <div class="panel fx-pick" data-kind="filters">
+            <div class="panel-head"><h3>Filtres</h3></div>
+            <label class="toggle"><input type="checkbox" id="favFilters"><span id="favFiltersLabel">Mes favoris automatiquement</span></label>
+            <div id="filters" class="chips"></div>
+            <label class="inline">Appliquer <select id="filterScope"><option value="global">Sur toute la vidéo</option><option value="all">À chaque scène</option></select></label>
+          </div>
+          <p class="hint">Transitions, effets et filtres viennent de tes projets CapCut et sont rejoués à l’identique par CapCut.</p>
         </div>
-        <div class="panel deliver-card" id="exportCard">
-          <span class="deliver-num">B</span>
-          <h3>Exporter la vidéo</h3>
-          <p>Après la génération, exporte ce projet en MP4 : avec ELPO en arrière-plan, ou en pilotant CapCut pour un rendu identique, effets compris.</p>
-          <div class="segmented wide" id="singleEngine"><button data-engine="elpo" class="on">Export ELPO</button><button data-engine="capcut">Via CapCut</button></div>
-          <button id="exportOne" class="btn primary wide" disabled>Exporter ce projet</button>
-          <div id="singleJob" class="job-line" hidden></div>
-          <p class="hint">Réglages de sortie dans Production en lot. L’export ELPO reproduit images, vidéos, mouvements, transitions et sons ; pas les effets ni les filtres.</p>
+
+        <!-- VÉRIFIER -->
+        <div class="step" id="step-review" hidden>
+          <div id="previewEmpty" class="empty-state compact"><svg class="ico big"><use href="#i-play"/></svg><h2>Pas encore d’aperçu</h2><p>Lance l’analyse : rien n’est écrit dans CapCut à cette étape.</p></div>
+          <div id="previewContent" hidden>
+            <div class="panel"><div class="panel-head"><h3>Points de contrôle</h3><button id="editSync" class="link">Corriger le plan</button></div><ul id="warnings" class="warnings"></ul><p id="writeFiles" class="hint"></p></div>
+            <div class="panel"><div class="panel-head"><h3>Déroulé</h3><span id="sceneCount" class="subtle"></span><button id="exportScenes" class="link" disabled>Exporter le JSON</button></div>
+              <div class="table-wrap"><table><thead><tr><th>#</th><th>Visuel</th><th>Début → fin</th><th>Durée</th><th>Clips</th><th>Texte</th></tr></thead><tbody id="sceneRows"></tbody></table></div><div id="pagination" class="pagination"></div></div>
+          </div>
         </div>
-      </div>
-    </div>
+
+        <!-- ÉCRIRE & EXPORTER -->
+        <div class="step" id="step-deliver" hidden>
+          <div class="panel deliver-card" id="writeCard">
+            <span class="deliver-num">A</span>
+            <h3>Écrire la timeline dans CapCut</h3>
+            <p>CapCut doit être fermé. Les fichiers du projet sont sauvegardés, écrits puis vérifiés. Si le projet change après l’aperçu, l’écriture est refusée.</p>
+            <label class="check"><input id="confirm" type="checkbox"><span>J’ai vérifié l’aperçu et la timeline du projet est vide.</span></label>
+            <button id="build" class="btn primary wide" disabled>Générer dans CapCut</button>
+            <p id="buildHint" class="hint">L’écriture devient disponible après l’analyse.</p>
+          </div>
+          <div class="panel deliver-card" id="exportCard">
+            <span class="deliver-num">B</span>
+            <h3>Exporter la vidéo</h3>
+            <p>Avec ELPO en arrière-plan, ou en pilotant CapCut pour un rendu identique, effets compris.</p>
+            <div class="segmented wide" id="singleEngine"><button data-engine="elpo" class="on">Export ELPO</button><button data-engine="capcut">Via CapCut</button></div>
+            <button id="exportOne" class="btn primary wide" disabled>Exporter ce projet</button>
+            <div id="singleJob" class="job-line" hidden></div>
+            <p class="hint">Réglages de sortie dans la Salle de rendu. L’export ELPO ne reproduit pas les effets ni les filtres.</p>
+          </div>
+        </div>
+        </div>
+        <div class="action-bar">
+          <button id="stepBack" class="btn ghost" aria-label="Étape précédente">‹</button>
+          <span id="settingsHint" class="hint">L’analyse ne modifie aucun fichier CapCut.</span>
+          <button id="stepNext" class="btn">Suivant</button>
+          <button id="toSettings" hidden></button>
+          <button id="analyze" class="btn primary" disabled>Analyser</button>
+        </div>
+      </aside>
     </div>
 
     <div class="timeline-dock" id="timelineDock" hidden>
       <div class="dock-head"><span class="timecode" id="dockClock">0:00.000</span><span id="dockInfo" class="subtle">Glisse un raccord pour l’ajuster. Clique une scène pour la retrouver.</span><div class="zoom"><button id="dockZoomOut" class="link" aria-label="Dézoomer">−</button><button id="dockZoomIn" class="link" aria-label="Zoomer">+</button></div></div>
       <div class="ribbon-scroll" id="ribbonScroll"><div class="ribbon" id="ribbon"><canvas id="wave"></canvas><div id="ribbonScenes" class="ribbon-scenes"></div><div id="playhead" class="playhead"></div></div></div>
     </div>
-    <div class="action-bar">
-      <button id="stepBack" class="btn ghost">Étape précédente</button>
-      <span id="settingsHint" class="hint">L’analyse ne modifie aucun fichier CapCut.</span>
-      <button id="stepNext" class="btn">Étape suivante</button>
-      <button id="toSettings" hidden></button>
-      <button id="analyze" class="btn primary" disabled>Analyser et vérifier</button>
-    </div>
   </section>
 
-  <!-- PRODUCTION EN LOT -->
-  <section class="page" id="page-batch" data-title="Production en lot">
+  <!-- SALLE DE RENDU : PRODUCTION EN LOT -->
+  <section class="page" id="page-batch" data-title="Salle de rendu">
+    <div class="room-bar">
+      <div class="segmented" id="batchView" role="tablist" aria-label="Production en lot"><button data-view="setup" class="on">Préparer le lot</button><button data-view="room">Salle de rendu <span id="roomCount"></span></button></div>
+      <div class="room-stats" id="roomStats" hidden>
+        <div><span>Fin estimée</span><strong id="roomEnd">—</strong></div>
+        <div><span>Reste</span><strong id="roomLeft">—</strong></div>
+        <div><span>Terminées</span><strong id="roomDone">0</strong></div>
+      </div>
+    </div>
+    <div id="batchSetup">
     <div class="cols batch-cols">
       <div class="panel batch-list">
         <div class="panel-head"><h3>Projets cochés</h3><span id="batchCount" class="subtle">0</span><button class="link" data-page-link="library">Ajouter depuis Projets</button></div>
@@ -293,18 +297,30 @@
               <p id="patternHint" class="hint">Variables : {projet}, {date}, {n}. Aucun fichier existant n’est écrasé.</p>
             </div>
             <div id="capcutExportBox" hidden>
+              <h4 class="sub-title">Pilotage prêt ?</h4>
               <div class="pilot-state" id="pilotState"></div>
-              <p class="hint">Garde dans CapCut tes réglages d’export habituels (résolution, dossier) : ELPO réutilise ceux de la dernière exportation. Calibrage et délais dans Réglages.</p>
+              <p class="hint">Garde dans CapCut tes réglages d’export habituels (résolution, dossier) : ELPO réutilise ceux de la dernière exportation. Délais avancés dans Réglages.</p>
             </div>
           </div>
         </div>
         <div class="run-bar"><span id="batchHint" class="hint">Coche des projets dans Projets.</span><button id="batchTest" class="btn ghost" hidden>Tester sur un projet</button><button id="batchStart" class="btn primary" disabled>Lancer la production</button></div>
       </div>
     </div>
-    <div class="panel queue-panel">
+    </div>
+    <div id="renderRoom" hidden>
+      <div class="room-strip" id="roomStrip" aria-hidden="true"></div>
+      <div class="room-grid">
+        <div class="panel queue-panel">
       <div class="panel-head"><h3>File de production</h3><span id="queueSummary" class="subtle">Vide</span><button id="queueStop" class="btn ghost danger" hidden><svg class="ico"><use href="#i-stop"/></svg>Tout arrêter</button><button id="queueClear" class="link">Effacer les terminés</button></div>
       <div id="queueList" class="queue-list"><p class="hint">Les exports apparaîtront ici avec leur progression.</p></div>
       <details class="pilot-log" id="pilotLogBox" hidden><summary>Journal du pilotage CapCut</summary><ol id="pilotLog"></ol></details>
+    </div>
+        <aside class="room-side">
+          <div class="panel pilot-pause" id="pilotPanel" hidden><div class="panel-head"><h3>Pilotage en pause</h3></div><p id="pilotPauseText">La souris a bougé : le pilotage attend avant sa prochaine action.</p><div class="button-row"><button id="pilotResume" class="btn primary">Reprendre</button><button id="pilotAbort" class="btn ghost danger">Arrêter le lot</button></div></div>
+          <div class="panel fidelity" id="fidelityCard" hidden><div class="panel-head"><h3>Contrôle de fidélité</h3></div><div id="fidelityList" class="fidelity-list"></div></div>
+          <div class="panel"><div class="panel-head"><h3>Sortie</h3></div><dl class="out-list" id="roomOutput"></dl></div>
+        </aside>
+      </div>
     </div>
   </section>
 
@@ -340,8 +356,8 @@
       </div>
       <div class="panel">
         <div class="panel-head"><h3>Pilotage de CapCut</h3><span id="accessState" class="pill">Accessibilité : à vérifier</span></div>
-        <div class="calib-row"><div><strong>Première vignette de l’accueil</strong><span id="tilePoint" class="hint">Non calibrée</span></div><button class="btn" data-calibrate="tile"><svg class="ico"><use href="#i-target"/></svg>Calibrer</button></div>
-        <div class="calib-row"><div><strong>Bouton « Exporter » de la fenêtre d’export</strong><span id="exportPoint" class="hint">Touche Entrée utilisée</span></div><button class="btn" data-calibrate="exportButton"><svg class="ico"><use href="#i-target"/></svg>Calibrer</button><button id="clearExportPoint" class="link">Utiliser Entrée</button></div>
+        <div class="calib-row"><div><strong>Première vignette de l’accueil</strong><span id="tilePoint" class="hint">Pas encore visée</span></div><button class="btn" data-calibrate="tile"><svg class="ico"><use href="#i-target"/></svg>Viser</button></div>
+        <div class="calib-row"><div><strong>Bouton « Exporter » de la fenêtre d’export</strong><span id="exportPoint" class="hint">Touche Entrée utilisée</span></div><button class="btn" data-calibrate="exportButton"><svg class="ico"><use href="#i-target"/></svg>Viser</button><button id="clearExportPoint" class="link">Utiliser Entrée</button></div>
         <div class="calib-row"><div><strong>Dossier d’export de CapCut</strong><span id="capcutExportDir" class="hint path">Non choisi</span></div><button id="chooseCapcutDir" class="btn">Choisir</button></div>
         <div class="form-grid tight">
           <label>Ouverture du projet<select id="pOpenWith"><option value="double">Double-clic</option><option value="single">Simple clic</option></select></label>
@@ -354,7 +370,7 @@
           <label>Après l’export<select id="pClose"><option value="escape">Échap puis quitter</option><option value="escape,escape">Échap deux fois puis quitter</option><option value="">Quitter directement</option></select></label>
         </div>
         <div class="button-row"><button id="pilotAccess" class="btn ghost">Autoriser l’accessibilité</button><button id="pilotSave" class="btn">Enregistrer</button></div>
-        <p class="hint">Dans CapCut, trie l’accueil « Projets » par date de modification et calibre le bouton Exporter (le champ Nom de la fenêtre d’export peut garder le focus). Cycle par projet : fermeture de CapCut, projet placé en tête de la liste, lancement, ouverture de la première vignette, ⌘E puis Exporter, attente d’un fichier complet, fermeture de la fenêtre de fin d’export, sortie de CapCut.</p>
+        <p class="hint">Dans CapCut, trie l’accueil « Projets » par date de modification, puis vise la première vignette et le bouton Exporter (le champ Nom de la fenêtre d’export peut garder le focus). Cycle par projet : fermeture de CapCut, projet placé en tête de la liste, lancement, ouverture de la première vignette, ⌘E puis Exporter, attente d’un fichier complet, fermeture de la fenêtre de fin d’export, sortie de CapCut.</p>
       </div>
       <div class="panel">
         <div class="panel-head"><h3>Styles enregistrés</h3></div>
@@ -370,8 +386,8 @@
 </main>
 
 <div id="selectionBar" class="selection-bar" hidden><span id="selectionText">0 projet</span><button id="selectionBuild" class="btn">Monter en lot</button><button id="selectionExport" class="btn primary">Exporter en lot</button><button id="selectionClear" class="link">Tout décocher</button></div>
+<div id="dropZone" class="drop-zone" hidden><div><svg class="ico big"><use href="#i-drop"/></svg><strong>Dépose ici</strong><span>Un dossier d’images devient la source du projet actif ; un SRT ou un plan JSON est chargé dans les scènes.</span></div></div>
 <div class="toasts" aria-live="polite"><div id="notice" class="toast" hidden></div></div>
 <div id="palette" class="overlay" hidden><div class="palette" role="dialog" aria-label="Palette de commandes"><div class="search big"><svg class="ico"><use href="#i-search"/></svg><input id="paletteInput" type="text" placeholder="Que veux-tu faire ?" aria-label="Commande" autocomplete="off"></div><ul id="paletteList" role="listbox"></ul></div></div>
 <div id="modal" class="overlay" hidden><div class="modal" role="dialog" aria-labelledby="modalTitle"><h2 id="modalTitle"></h2><div id="modalBody" class="modal-body"></div><div class="modal-actions"><button id="modalCancel" class="btn ghost">Annuler</button><button id="modalOk" class="btn primary">Continuer</button></div></div></div>
-<div id="calibrate" class="overlay" hidden><div class="calib-card"><svg class="ico big"><use href="#i-target"/></svg><p id="calibrateText">Place le pointeur sur la cible dans CapCut.</p><strong id="calibrateCount" class="countdown">5</strong></div></div>
 <script type="module" src="app.js"></script></body></html>

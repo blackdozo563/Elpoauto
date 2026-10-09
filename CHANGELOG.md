@@ -1,5 +1,14 @@
 # Changements
 
+## 0.6.0
+- Interface repensée : rail de navigation, **Plateau** en trois zones (chutier, visionneuse, inspecteur) avec la timeline toujours visible, et **Salle de rendu** séparée de la préparation du lot (vidéos en cours, en attente, à revoir, heure de fin estimée).
+- Aperçu vivant : après une première analyse, chaque réglage relance l’aperçu (lecture seule) et la visionneuse rejoue les mouvements (zoom, panoramiques, Ken Burns) avec le même calcul que l’écriture CapCut.
+- Export automatique (moteur par défaut du lot) : chaque projet, monté par ELPO ou à la main, part sur l’export ELPO s’il est rendu fidèlement, sinon via CapCut, avec la raison affichée (titres, effets, filtres, pistes superposées…).
+- Pilotage CapCut : visée plein écran au lieu du compte à rebours, liste « Pilotage prêt ? » avec une action par ligne, HUD au-dessus de CapCut, pause quand la souris bouge (⌥⌘R reprend, ⌥⌘. arrête).
+- macOS : icône dans la barre des menus avec la progression, exports qui continuent fenêtre fermée, notification de fin de lot avec « Afficher ».
+- Glisser-déposer : un dossier d’images devient la source du projet actif, un SRT ou un plan JSON est chargé dans les scènes.
+- Correctifs : calibrage et redétection de FFmpeg n’interrompent plus un pilotage, un seul pilotage à la fois, notification qui ne compte que le lot terminé, forme d’onde calculée par FFmpeg (mémoire constante), CI qui lit la version dans package.json et tests à chaque push.
+
 ## 0.5.0
 - Livraison autonome : dépendances verrouillées, build DMG arm64 sur GitHub Actions, signature ad hoc et vérification native du paquet avant publication.
 - Compatibilité FFmpeg 7 : cadence constante rétablie après normalisation des filtres d'assemblage pour permettre le rendu réel des transitions.

@@ -24,8 +24,12 @@ let projects = [], selected = new Set(), libraryFilter = 'all', status = {}, sty
 let library = { transitions: [], effects: [], filters: [] }, fxKind = 'transitions', fxShow = null, batchEngine = 'auto', singleEngine = 'elpo';
 let exportJobs = [], pilotJobs = [], pilotSettings = {}, ffmpeg = null, focusScene = -1, ribbonZoom = 1, waveCache = new Map(), built = false;
 const pageSize = 12;
-const PAGES = { library: 'Projets', build: 'Montage complet', batch: 'Production en lot', fx: 'Bibliothèque', vault: 'Sauvegardes', settings: 'Réglages' };
-const STEPS = ['media', 'scenes', 'style', 'review', 'deliver'];
+// Each page: [eyebrow, title]. Mode 1 is the Plateau, mode 2 the Salle de rendu.
+const PAGES = { library: ['Tous tes projets CapCut', 'Projets'], build: ['Mode 1 · Montage complet', 'Plateau'], batch: ['Mode 2 · Production en lot', 'Salle de rendu'],
+  fx: ['Transitions, effets et filtres de tes projets', 'Bibliothèque'], vault: ['Sauvegardes et vidéos exportées', 'Coffre'], settings: ['FFmpeg, pilotage et recettes', 'Réglages'] };
+// The chutier (media) is always visible on the Plateau; the inspector has four tabs.
+const STEPS = ['scenes', 'style', 'review', 'deliver'];
+let livePreview = false, liveTimer = 0, batchView = 'setup', lastRoutes = null, pilotPaused = false;
 
 // ── Feedback ───────────────────────────────────────────────────────────────
 let noticeTimer = 0;
@@ -50,17 +54,23 @@ function ask(title, nodes = [], okLabel = 'Continuer', cancelLabel = 'Annuler') 
 function go(name) {
   if (!PAGES[name]) return;
   if (name !== 'build') $('voicePlayer').pause();
-  currentPage = name;
-  for (const p of Object.keys(PAGES)) $(`page-${p}`).hidden = p !== name;
-  document.querySelectorAll('[data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === name));
-  $('pageTitle').textContent = PAGES[name];
-  $('selectionBar').hidden = name !== 'library' || !selected.size;
+  const from = currentPage; currentPage = name;
+  const show = () => {
+    for (const p of Object.keys(PAGES)) $(`page-${p}`).hidden = p !== currentPage;
+    document.querySelectorAll('[data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === currentPage));
+    $('pageEyebrow').textContent = PAGES[currentPage][0]; $('pageTitle').textContent = PAGES[currentPage][1];
+    $('selectionBar').hidden = currentPage !== 'library' || !selected.size;
+  };
+  // Cross-fade between pages (View Transitions), unless the system asks for reduced motion.
+  const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  if (from !== name && document.startViewTransition && !calm && !document.body.classList.contains('booting')) document.startViewTransition(show); else show();
   if (name === 'vault') task(backups);
   if (name === 'batch') renderBatch();
   if (name === 'fx') renderFx();
   if (name === 'settings') renderSettings();
 }
 function step(name) {
+  if (name === 'media') name = 'scenes';
   if (name !== 'review') $('voicePlayer').pause();
   currentStep = name;
   for (const s of STEPS) $(`step-${s}`).hidden = s !== name;
@@ -68,7 +78,19 @@ function step(name) {
   if (currentPage !== 'build') go('build');
   renderRibbon(); buttons();
 }
-function invalidate() { stopPlayback(); report = null; $('confirm').checked = false; $('previewContent').hidden = true; $('previewEmpty').hidden = false; $('exportScenes').disabled = true; renderRibbon(); buttons(); }
+function invalidate() { stopPlayback(); report = null; $('confirm').checked = false; $('previewContent').hidden = true; $('previewEmpty').hidden = false; $('exportScenes').disabled = true; renderRibbon(); buttons(); scheduleLive(); }
+// Live preview: once a project has been analysed, every change is re-analysed quietly (read-only).
+function scheduleLive() {
+  clearTimeout(liveTimer);
+  if (!livePreview || !project || project.nonempty) return;
+  liveTimer = setTimeout(async () => {
+    if (working) { scheduleLive(); return; }
+    working = true; document.body.classList.add('busy'); buttons();
+    try { await analyzeNow({ quiet: true }); }
+    catch (e) { $('settingsHint').textContent = `Aperçu en attente : ${e.message}`; }
+    finally { working = false; document.body.classList.remove('busy'); buttons(); }
+  }, 650);
+}
 function buttons() {
   const at = STEPS.indexOf(currentStep);
   $('chooseFlowFolder').disabled = !project || working;
@@ -77,13 +99,29 @@ function buttons() {
   $('analyze').disabled = !project || project.nonempty || working;
   $('analyze').hidden = !['scenes', 'style', 'review'].includes(currentStep);
   $('stepBack').disabled = at <= 0; $('stepNext').hidden = at >= STEPS.length - 1 || (currentStep === 'style' && !report);
-  $('stepNext').textContent = currentStep === 'review' ? 'Passer à la génération' : 'Étape suivante';
+  $('stepNext').textContent = currentStep === 'review' ? 'Vers l’écriture' : 'Suivant';
   $('build').disabled = !report || !$('confirm').checked || running !== 'closed' || working;
   $('buildHint').textContent = running === 'open' ? 'Quitte CapCut pour autoriser la génération.' : running === 'unknown' ? 'La fermeture de CapCut doit être vérifiée.' : report ? 'Une sauvegarde précédera l’écriture des fichiers.' : 'L’écriture devient disponible après l’analyse.';
   $('exportOne').disabled = !project || (!built && !project.nonempty) || working;
   $('modeBuildMeta').textContent = project ? project.name : 'Choisis un projet';
   $('modeBatchMeta').textContent = selected.size ? `${plural(selected.size, 'projet coché')}` : 'Aucun projet coché';
   $('batchStart').disabled = !selected.size || working || !($('batchBuild').checked || $('batchExport').checked);
+  $('liveBadge').hidden = !(livePreview && report);
+  renderReadiness();
+}
+// Readiness pills in the Plateau header: what is done, and the next thing to do.
+function renderReadiness() {
+  const box = $('readiness'); box.replaceChildren();
+  if (!project) return;
+  if (project.nonempty) { const li = el('li', built ? 'Montage écrit · export possible' : 'Timeline déjà remplie · export possible', 'done'); li.prepend(icon('check')); box.append(li); return; }
+  const scenesReady = $('placement').value !== 'sync' || (!!syncPlan?.scenes?.length && syncPlan.scenes.every(x => x.file));
+  const items = [['Médias', project.visuals.length > 0 && !!$('audio').value], ['Scènes', !!report || scenesReady], ['Aperçu', !!report], ['Écriture', built]];
+  let next = false;
+  for (const [label, done] of items) {
+    const li = el('li', label, done ? 'done' : next ? '' : 'next');
+    if (done) li.prepend(icon('check')); else next = true;
+    box.append(li);
+  }
 }
 async function task(action) {
   if (working) return;
@@ -178,6 +216,7 @@ function resetProjectView() {
   invalidate();
 }
 async function selectProject() {
+  livePreview = false; clearTimeout(liveTimer);
   resetProjectView(); built = false;
   syncPlan = null; syncPage = 0; scenesFile = null; srtFile = null; mediaUrls = {}; focusScene = -1;
   $('clearSrt').hidden = true; $('srtName').textContent = 'Phrases et pauses proposent les raccords. Le SRT peut aussi être incrusté à l’export.';
@@ -205,7 +244,7 @@ async function selectProject() {
   $('musicBox').hidden = true;
   setPlacement('sync');
   mediaUrls = await unwrap(api.mediaSources(p.path));
-  renderMedia();
+  renderMedia(); renderMotions();
   if (p.flowError) notice(`${p.flowError} Choisis un autre dossier ou reviens au chutier.`, true);
   else if (p.nonempty) notice('La timeline est déjà remplie : ELPO ne la remplace pas. Tu peux exporter ce projet depuis l’étape 5 ou la production en lot.');
   else if (p.ignoredFiles) notice(`${p.ignoredFiles} entrée(s) non prises en charge, cachées ou sous-dossiers ne sont pas importées.`);
@@ -334,6 +373,8 @@ function renderMotions() {
   for (const [value, label, anim] of MOTIONS) {
     const b = el('button', undefined, `motion${$('motion').value === value ? ' on' : ''}`), frame = el('span', undefined, 'motion-frame'), pic = el('i');
     if (anim) pic.style.setProperty('--anim', anim);
+    const sample = project?.visuals.find(m => m.type === 'photo' && mediaUrls[m.path]);
+    if (sample) { pic.classList.add('real'); pic.style.backgroundImage = `url("${mediaUrls[sample.path]}")`; }
     frame.append(pic); b.append(frame, el('span', label)); b.setAttribute('aria-pressed', String($('motion').value === value));
     b.onclick = () => { $('motion').value = value; renderMotions(); invalidate(); };
     $('motionGrid').append(b);
@@ -425,7 +466,7 @@ $('transitionSearch').oninput = renderTransitions;
 $('refreshTransitions').onclick = () => task(loadCatalog);
 
 // ── Review ──────────────────────────────────────────────────────────────────
-function renderReport() {
+function renderReport(jump = true) {
   $('previewEmpty').hidden = true; $('previewContent').hidden = false; $('exportScenes').disabled = false; $('confirm').checked = false;
   $('stats').replaceChildren();
   for (const [value, label] of [[report.scenes, 'scènes'], [report.clips, 'clips sur la timeline'], [time(report.durationUs), 'de voix off'], [`${report.transitions + (report.effects || 0) + (report.filters || 0)}`, 'transitions, effets, filtres']]) {
@@ -434,7 +475,9 @@ function renderReport() {
   $('warnings').replaceChildren(...report.warnings.map(w => el('li', w)));
   $('writeFiles').textContent = `${plural(report.filesToWrite.length, 'fichier')} sauvegardé(s) puis modifié(s) : ${report.filesToWrite.join(', ')}`;
   $('sceneCount').textContent = `${plural(report.rows.length, 'scène')} · ${report.audio}`;
-  page = 0; renderRows(); setupPlayback(); step('review'); buttons();
+  page = 0; renderRows(); setupPlayback();
+  if (jump) step('review'); else renderRibbon();
+  buttons();
 }
 function renderRows() {
   if (!report) return;
@@ -456,12 +499,18 @@ function renderRows() {
   prev.onclick = () => { page--; renderRows(); }; next.onclick = () => { page++; renderRows(); };
   $('pagination').replaceChildren(prev, el('span', `Page ${page + 1} / ${totalPages}`), next);
 }
-$('analyze').onclick = () => task(async () => {
-  invalidate(); $('settingsHint').textContent = 'Vérification des médias et préparation du montage…';
+async function analyzeNow({ quiet = false } = {}) {
+  const live = livePreview, resumeAt = quiet ? $('voicePlayer').currentTime || 0 : 0;
+  livePreview = false; clearTimeout(liveTimer);
+  invalidate(); $('settingsHint').textContent = quiet ? 'Aperçu vivant : mise à jour…' : 'Vérification des médias et préparation du montage…';
   try { report = await engine('preview', { project: project.path, options: options() }); }
+  catch (e) { livePreview = live; throw e; }
   finally { $('settingsHint').textContent = 'L’analyse ne modifie aucun fichier CapCut.'; }
-  renderReport(); notice('Aperçu prêt. Aucun fichier CapCut n’a été modifié.');
-});
+  livePreview = true;
+  renderReport(!quiet);
+  if (resumeAt) seek(resumeAt * 1e6);
+}
+$('analyze').onclick = () => task(async () => { await analyzeNow(); notice('Aperçu prêt. Il se met à jour tout seul quand tu changes un réglage. Aucun fichier CapCut n’a été modifié.'); });
 $('confirm').onchange = buttons;
 $('build').onclick = () => task(async () => {
   $('buildHint').textContent = 'Sauvegarde, écriture puis vérification…'; stopPlayback(); const token = report.token; report = null; $('confirm').checked = false; $('exportScenes').disabled = true;
@@ -483,6 +532,8 @@ $('editSync').onclick = () => { $('voicePlayer').pause(); step('scenes'); };
 function playbackError(text) { $('playerError').textContent = text; $('playerError').hidden = false; }
 function stopPlayback() {
   playGeneration++; cancelAnimationFrame(raf); playback = null; activeClip = null;
+  $('playerImage').style.transform = ''; $('playerVideo').style.transform = '';
+  $('playerEmpty').textContent = project?.nonempty ? 'Timeline déjà remplie : exporte ce projet depuis l’onglet Écrire.' : 'Analyse le projet : le montage apparaîtra ici, en mouvement.';
   $('voicePlayer').pause(); $('voicePlayer').removeAttribute('src'); $('voicePlayer').load();
   $('playerVideo').pause(); $('playerVideo').removeAttribute('src'); $('playerVideo').load();
   $('playerImage').removeAttribute('src'); $('playerImage').hidden = true; $('playerVideo').hidden = true; $('playerEmpty').hidden = false; $('playerBadge').textContent = '';
@@ -509,11 +560,29 @@ function updatePlayback() {
     else if (clip.type === 'photo') { $('playerImage').src = url; $('playerImage').hidden = false; }
     else { video.src = url; video.hidden = false; }
   }
+  applyMotion(clip, t);
   if (clip.type === 'video' && video.readyState >= 1) {
     if (Math.abs(video.currentTime - target) > .08) video.currentTime = target;
     if (!audio.paused && video.paused) { const generation = playGeneration; video.play().catch(() => { if (generation === playGeneration) playbackError('Le clip vidéo ne peut pas être lu ici. Vérifie son codec dans CapCut.'); }); }
     else if (audio.paused) video.pause();
   }
+}
+// Same math as motionFor() in lib/engine.js, so the stage moves the way CapCut will.
+const KENBURNS = ['in', 'pan-right', 'out', 'pan-left', 'pan-up', 'pan-down'];
+function motionAt(kind, sceneIndex, amount, f) {
+  if (kind === 'alternate') kind = sceneIndex % 2 === 0 ? 'in' : 'out';
+  if (kind === 'kenburns') kind = KENBURNS[sceneIndex % KENBURNS.length];
+  const big = 1 + amount, p = amount * 0.9, lerp = (a, b) => a + (b - a) * f;
+  const m = { in: [1, big, 0, 0, 0, 0], out: [big, 1, 0, 0, 0, 0], 'pan-left': [big, big, p, -p, 0, 0], 'pan-right': [big, big, -p, p, 0, 0], 'pan-up': [big, big, 0, 0, -p, p], 'pan-down': [big, big, 0, 0, p, -p] }[kind];
+  return m ? { s: lerp(m[0], m[1]), x: lerp(m[2], m[3]), y: lerp(m[4], m[5]) } : null;
+}
+function applyMotion(clip, t) {
+  const row = playback.rows[clip.scene - 1], amount = Number($('amount').value) / 100, kind = playback.motion || 'none';
+  const f = Math.min(1, Math.max(0, (t * 1e6 - row.startUs) / Math.max(1, row.endUs - row.startUs)));
+  const m = kind !== 'none' && amount > 0 ? motionAt(kind, clip.scene - 1, amount, f) : null;
+  // CapCut positions are in half-canvas units, y pointing up.
+  const value = m ? `translate(${(m.x * 50).toFixed(3)}%, ${(-m.y * 50).toFixed(3)}%) scale(${m.s.toFixed(4)})` : '';
+  $('playerImage').style.transform = clip.type === 'photo' ? value : ''; $('playerVideo').style.transform = clip.type === 'video' ? value : '';
 }
 function animatePlayback() { updatePlayback(); if (!$('voicePlayer').paused && playback) raf = requestAnimationFrame(animatePlayback); }
 function togglePlay() { if (!playback) return; const a = $('voicePlayer'); if (a.paused) a.play()?.catch?.(() => {}); else a.pause(); }
@@ -532,7 +601,7 @@ function ribbonScenes() {
   return (syncPlan?.scenes || []).map(s => ({ start: s.start, end: s.end, file: s.file, name: visualFor(s.file)?.name || '' }));
 }
 function renderRibbon() {
-  const scenes = ribbonScenes(), show = currentPage === 'build' && ['scenes', 'style', 'review'].includes(currentStep) && scenes.length > 0;
+  const scenes = ribbonScenes(), show = currentPage === 'build' && scenes.length > 0;
   $('timelineDock').hidden = !show;
   if (!show) return;
   const total = scenes.at(-1).end || 1, editable = !report && $('placement').value === 'sync' && !!syncPlan;
@@ -603,7 +672,7 @@ async function saveExportSettings() { await unwrap(api.exportSettings(exportSett
 async function startExport(list, engineName, test = false, { confirmed = false } = {}) {
   if (!list.length) throw new Error('Aucun projet à exporter.');
   if (engineName === 'capcut') {
-    if (!pilotSettings.tile) { go('settings'); throw new Error('Calibre d’abord la première vignette de l’accueil CapCut (Réglages, Pilotage de CapCut).'); }
+    if (!pilotSettings.tile) { go('settings'); throw new Error('Vise d’abord la première vignette de l’accueil CapCut : Réglages, Pilotage de CapCut, bouton « Viser ».'); }
     if (!pilotSettings.exportDir) { go('settings'); throw new Error('Indique le dossier d’export utilisé par CapCut (Réglages).'); }
     if (!confirmed && !(await ask(test ? 'Tester le pilotage sur un projet ?' : `Exporter ${plural(list.length, 'projet')} avec CapCut ?`, [
       el('p', 'ELPO va fermer et relancer CapCut, ouvrir chaque projet, lancer l’export puis revenir à la liste des projets. N’utilise pas le clavier ni la souris pendant le lot.'),
@@ -631,15 +700,31 @@ async function startAutoExport(list) {
   const intro = el('p', `${plural(elpoList.length, 'projet')} avec ELPO en arrière-plan · ${plural(capcutList.length, 'projet')} via CapCut pour un rendu identique.`);
   if (capcutList.length && (!pilotSettings.tile || !pilotSettings.exportDir)) {
     // The pilot is not set up: export those projects with ELPO anyway (without these elements), or leave them out.
-    const anyway = await ask('Pilotage CapCut non calibré', [intro, ...rows, el('p', 'Calibre le pilotage dans Réglages pour exporter ces projets à l’identique. Sinon, ELPO peut les exporter sans ces éléments.')], 'Exporter avec ELPO quand même', 'Les laisser de côté');
+    const anyway = await ask('Pilotage CapCut pas encore prêt', [intro, ...rows, el('p', 'Pour exporter ces projets à l’identique, vise la vignette de CapCut dans « Pilotage prêt ? ». Sinon, ELPO peut les exporter sans ces éléments.')], 'Exporter avec ELPO quand même', 'Les laisser de côté');
     if (anyway) elpoList.push(...capcutList);
     capcutList.length = 0;
     if (!elpoList.length) return false;
   } else if (!(await ask(`Exporter ${plural(elpoList.length + capcutList.length, 'projet')} ?`, [intro, ...rows, ...(capcutList.length ? [el('p', 'Pendant le pilotage, ELPO utilise la souris et le clavier : n’y touche pas.')] : [])], 'Démarrer'))) return false;
+  lastRoutes = { elpo: elpoList.map(p => p.name), capcut: capcutList.map(p => ({ name: p.name, reasons: routes.get(p.path).reasons })) };
   if (elpoList.length && !(await startExport(elpoList, 'elpo'))) return false;
   if (capcutList.length) await startExport(capcutList, 'capcut', false, { confirmed: true });
+  renderFidelity();
   return true;
 }
+function renderFidelity() {
+  $('fidelityCard').hidden = !lastRoutes;
+  if (!lastRoutes) return;
+  const nodes = [el('p', `${plural(lastRoutes.elpo.length, 'projet')} avec ELPO, en arrière-plan.`)];
+  for (const r of lastRoutes.capcut) { const p = el('p'); p.append(el('strong', r.name), document.createTextNode(` via CapCut : ${r.reasons.join(', ')}.`)); nodes.push(p); }
+  $('fidelityList').replaceChildren(...nodes);
+}
+function setBatchView(view) {
+  batchView = view;
+  $('batchSetup').hidden = view !== 'setup'; $('renderRoom').hidden = view !== 'room'; $('roomStats').hidden = view !== 'room';
+  document.querySelectorAll('#batchView button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
+}
+function showRoom() { go('batch'); setBatchView('room'); }
+document.querySelectorAll('#batchView button').forEach(b => b.onclick = () => setBatchView(b.dataset.view));
 document.querySelectorAll('#singleEngine button').forEach(b => b.onclick = () => { singleEngine = b.dataset.engine; document.querySelectorAll('#singleEngine button').forEach(x => x.classList.toggle('on', x === b)); });
 $('exportOne').onclick = () => task(async () => { if (project) await startExport([{ path: project.path, name: project.name }], singleEngine); });
 
@@ -668,12 +753,21 @@ function renderBatch() {
     exportOn && exportable < list.length ? `${list.length - exportable} sans timeline` : null].filter(Boolean).join(' · ') || 'Active au moins une étape.';
   renderPilotState(); buttons();
 }
+// "Pilotage prêt": each missing piece comes with the button that fixes it, right where the batch starts.
+let pilotAccessOk = null;
 function renderPilotState() {
-  const items = [[!!pilotSettings.tile, pilotSettings.tile ? `Vignette calibrée (${pilotSettings.tile.x}, ${pilotSettings.tile.y})` : 'Vignette de l’accueil à calibrer'],
-    [!!pilotSettings.exportDir, pilotSettings.exportDir ? `Exports CapCut : ${pilotSettings.exportDir}` : 'Dossier d’export de CapCut à indiquer'],
-    [!!pilotSettings.exportButton, pilotSettings.exportButton ? 'Bouton Exporter calibré' : 'Bouton Exporter non calibré : touche Entrée (calibrage conseillé)'],
-    [true, pilotSettings.missing === 'continue' ? 'Médias manquants : export malgré la fenêtre « Relier »' : 'Projets avec médias manquants ignorés']];
-  $('pilotState').replaceChildren(...items.map(([okay, text]) => { const d = el('div'); d.append(el('span', undefined, `dot ${okay ? 'ok' : 'warn'}`), el('span', text)); return d; }));
+  const p = pilotSettings;
+  const items = [
+    [pilotAccessOk === true, pilotAccessOk === true ? 'Accessibilité autorisée' : 'Autorise ELPO à piloter CapCut (Accessibilité de macOS)', pilotAccessOk === true ? null : ['Autoriser', () => $('pilotAccess').onclick()]],
+    [!!p.exportDir, p.exportDir ? `Exports CapCut : ${p.exportDir}` : 'Indique le dossier où CapCut enregistre ses vidéos', [p.exportDir ? 'Changer' : 'Choisir', () => $('chooseCapcutDir').onclick()]],
+    [!!p.tile, p.tile ? 'Première vignette de l’accueil visée' : 'Vise la première vignette de l’accueil de CapCut', [p.tile ? 'Viser à nouveau' : 'Viser', () => aim('tile')]],
+    [!!p.exportButton, p.exportButton ? 'Bouton « Exporter » visé' : 'Bouton « Exporter » : ELPO appuie sur Entrée (viser est plus sûr)', [p.exportButton ? 'Viser à nouveau' : 'Viser', () => aim('exportButton')]],
+    [true, p.missing === 'continue' ? 'Médias manquants : export malgré la fenêtre « Relier »' : 'Projets aux médias manquants laissés de côté', null]];
+  $('pilotState').replaceChildren(...items.map(([okay, text, action]) => {
+    const d = el('div'); d.append(el('span', undefined, `dot ${okay ? 'ok' : 'warn'}`), el('span', text));
+    if (action) { const b = el('button', action[0], 'btn ghost small'); b.onclick = action[1]; d.append(b); }
+    return d;
+  }));
 }
 document.querySelectorAll('#batchEngine button').forEach(b => b.onclick = () => { batchEngine = b.dataset.engine; renderBatch(); });
 for (const id of ['batchBuild', 'batchExport', 'batchVoice']) $(id).addEventListener('change', renderBatch);
@@ -714,38 +808,89 @@ $('batchStart').onclick = () => task(async () => {
   const skipped = selected.size - list.length;
   if (skipped) notice(`${plural(skipped, 'projet')} sans timeline exportable ignoré(s).`);
   const started = batchEngine === 'auto' ? await startAutoExport(list) : await startExport(list, batchEngine);
-  if (started) $('queueList').scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  if (started) showRoom();
 });
 $('batchTest').onclick = () => task(async () => { const list = selectedProjects(); await startExport(list.slice(0, 1), 'capcut', true); });
+// Remaining time of one ELPO job from its own pace; null when it cannot be estimated yet.
+function jobLeft(j, now = Date.now()) {
+  if (j.engine !== 'elpo' || !j.started || !(j.progress > 0.02)) return null;
+  return (now - j.started) * (1 - j.progress) / j.progress;
+}
+const minutes = ms => ms < 60000 ? `${Math.max(1, Math.round(ms / 1000))} s` : ms < 3600000 ? `${Math.round(ms / 60000)} min` : `${Math.floor(ms / 3600000)} h ${String(Math.round(ms / 60000) % 60).padStart(2, '0')}`;
+function jobRow(j) {
+  const card = projects.find(p => p.path === j.project);
+  const row = el('div', undefined, `job ${j.status}`), main = el('div', undefined, 'job-main'), top = el('div', undefined, 'job-top'), bar = el('div', undefined, `bar ${j.status}`), fill = el('i');
+  fill.style.width = `${Math.round((j.progress || 0) * 100)}%`; bar.append(fill);
+  top.append(el('strong', j.name), el('span', `${j.engine === 'capcut' ? 'CapCut' : 'ELPO'} · ${j.stage}${j.size ? ' · ' + j.size : ''}`), el('span', j.status === 'done' ? 'Terminé' : `${Math.round((j.progress || 0) * 100)} %`, 'pct'));
+  main.append(top, bar);
+  if (j.error) main.append(el('span', j.error, 'err'));
+  const actions = el('div', undefined, 'job-actions');
+  if (j.status === 'done' && j.output) {
+    const show = el('button', 'Afficher', 'link'); show.onclick = () => task(() => unwrap(api.reveal({ file: j.output })));
+    const play = el('button', 'Lire', 'link'); play.onclick = () => task(() => unwrap(api.reveal({ file: j.output, open: true })));
+    actions.append(play, show);
+  } else if (j.status === 'failed') {
+    const again = el('button', 'Relancer', 'link'); again.onclick = () => task(() => startExport([{ path: j.project, name: j.name }], j.engine));
+    actions.append(again);
+  } else if (j.engine === 'elpo' && j.status === 'queued') { const c = el('button', 'Annuler', 'link'); c.onclick = () => task(() => unwrap(api.exportCancel(j.id))); actions.append(c); }
+  row.append(coverNode(card || j, 'mini'), main, actions);
+  return row;
+}
+function liveCard(j) {
+  const card = projects.find(p => p.path === j.project), box = el('article', undefined, 'live-card'), frame = el('div', undefined, 'frame'), moving = el('div');
+  moving.append(card?.coverUrl ? Object.assign(el('img'), { alt: '', src: card.coverUrl }) : el('span', (j.name || '?').charAt(0).toUpperCase(), 'monogram'));
+  frame.append(moving, el('span', j.stage, 'chip-on'), el('span', j.engine === 'capcut' ? 'Via CapCut' : 'ELPO', 'engine'));
+  const body = el('div', undefined, 'body'), bar = el('div', undefined, 'bar'), fill = el('i', undefined, 'live'), meta = el('div', undefined, 'meta'), left = jobLeft(j);
+  fill.style.width = `${Math.round((j.progress || 0) * 100)}%`; bar.append(fill);
+  meta.append(el('span', left ? `encore ${minutes(left)}` : j.engine === 'capcut' ? 'CapCut exporte' : 'Calcul du temps…'), el('span', `${Math.round((j.progress || 0) * 100)} %`, 'pct'));
+  const actions = el('div', undefined, 'job-actions');
+  if (j.engine === 'elpo') { const c = el('button', 'Annuler', 'link'); c.onclick = () => task(() => unwrap(api.exportCancel(j.id))); actions.append(c); }
+  body.append(el('strong', j.name), bar, meta, actions); box.append(frame, body);
+  return box;
+}
 function renderQueue() {
   const jobs = [...pilotJobs.map(j => ({ ...j, engine: 'capcut' })), ...exportJobs.map(j => ({ ...j, engine: 'elpo' }))];
-  const live = jobs.filter(j => ['queued', 'preparing', 'rendering', 'running'].includes(j.status));
-  $('queueSummary').textContent = jobs.length ? `${jobs.filter(j => j.status === 'done').length} terminé(s) · ${live.length} en cours ou en attente${jobs.some(j => j.status === 'failed') ? ` · ${jobs.filter(j => j.status === 'failed').length} en échec` : ''}` : 'Vide';
-  $('queueStop').hidden = !live.length;
+  const live = jobs.filter(j => ['preparing', 'rendering', 'running'].includes(j.status)), queued = jobs.filter(j => j.status === 'queued');
+  const done = jobs.filter(j => j.status === 'done'), failed = jobs.filter(j => j.status === 'failed'), cancelled = jobs.filter(j => j.status === 'cancelled');
+  const active = live.length + queued.length;
+  $('queueSummary').textContent = jobs.length ? `${done.length} terminée(s) · ${active} en cours ou en attente${failed.length ? ` · ${failed.length} à revoir` : ''}` : 'Vide';
+  $('queueStop').hidden = !active;
   $('queueList').replaceChildren();
-  for (const j of jobs) {
-    const card = projects.find(p => p.path === j.project);
-    const row = el('div', undefined, 'job'), main = el('div', undefined, 'job-main'), top = el('div', undefined, 'job-top'), bar = el('div', undefined, `bar ${j.status}`), fill = el('i');
-    fill.style.width = `${Math.round((j.progress || 0) * 100)}%`; if (['rendering', 'running', 'preparing'].includes(j.status)) fill.className = 'live';
-    bar.append(fill);
-    top.append(el('strong', j.name), el('span', `${j.engine === 'capcut' ? 'CapCut' : 'ELPO'} · ${j.stage}${j.size ? ' · ' + j.size : ''}`), el('span', j.status === 'done' ? 'Terminé' : `${Math.round((j.progress || 0) * 100)} %`, 'pct'));
-    main.append(top, bar);
-    if (j.error) main.append(el('span', j.error, 'err'));
-    const actions = el('div', undefined, 'job-actions');
-    if (j.status === 'done' && j.output) {
-      const show = el('button', 'Afficher', 'link'); show.onclick = () => task(() => unwrap(api.reveal({ file: j.output })));
-      const play = el('button', 'Lire', 'link'); play.onclick = () => task(() => unwrap(api.reveal({ file: j.output, open: true })));
-      actions.append(play, show);
-    } else if (j.engine === 'elpo' && ['queued', 'preparing', 'rendering'].includes(j.status)) { const c = el('button', 'Annuler', 'link'); c.onclick = () => task(() => unwrap(api.exportCancel(j.id))); actions.append(c); }
-    row.append(coverNode(card || j, 'mini'), main, actions); $('queueList').append(row);
-  }
+  const group = (title, nodes) => { if (!nodes.length) return; const g = el('section', undefined, 'queue-group'), h = el('h4', title); h.append(el('span', String(nodes.length))); g.append(h, ...nodes); $('queueList').append(g); };
+  if (live.length) { const cards = el('div', undefined, 'live-cards'); cards.append(...live.map(liveCard)); const g = el('section', undefined, 'queue-group'), h = el('h4', 'En cours'); h.append(el('span', String(live.length))); g.append(h, cards); $('queueList').append(g); }
+  group('En attente', queued.map(jobRow)); group('À revoir', failed.map(jobRow)); group('Terminées', done.map(jobRow)); group('Annulées', cancelled.map(jobRow));
   if (!jobs.length) $('queueList').append(el('p', 'Les exports apparaîtront ici avec leur progression.', 'hint'));
+  // Strip: one segment per video of the batch.
+  $('roomStrip').replaceChildren(...jobs.filter(j => j.status !== 'cancelled').slice(0, 200).map(j => {
+    const i = el('i', undefined, j.status === 'done' ? 'done' : j.status === 'failed' ? 'failed' : j.status === 'queued' ? '' : 'live');
+    i.style.setProperty('--p', String(Math.round((j.progress || 0) * 100))); return i;
+  }));
+  // Estimated end: running jobs at their own pace, queued ELPO jobs at the average pace, shared by the parallel exports.
+  const now = Date.now(), finished = done.filter(j => j.engine === 'elpo' && j.started && j.finished);
+  const lefts = live.map(j => jobLeft(j, now)).filter(x => x !== null);
+  const avg = finished.length ? finished.reduce((n, j) => n + (j.finished - j.started), 0) / finished.length : live.filter(j => jobLeft(j, now) !== null).map(j => (now - j.started) / j.progress)[0];
+  const waiting = queued.filter(j => j.engine === 'elpo').length, parallel = Math.max(1, Number($('exParallel').value) || 1);
+  const left = active && (lefts.length || (waiting && avg)) ? (lefts.reduce((a, b) => Math.max(a, b), 0) + (waiting && avg ? waiting * avg / parallel : 0)) : null;
+  $('roomEnd').textContent = left ? new Date(now + left).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—';
+  $('roomLeft').textContent = left ? minutes(left) : active ? 'calcul…' : '—';
+  $('roomDone').textContent = String(done.length);
+  $('roomCount').textContent = active ? `(${active})` : '';
+  $('navJobs').textContent = active ? String(active) : '';
   const total = jobs.filter(j => j.status !== 'cancelled'), pct = total.length ? total.reduce((n, j) => n + (j.progress || 0), 0) / total.length : 0;
-  $('queueMini').hidden = !live.length; $('queueMiniText').textContent = `${plural(live.length, 'export')} en cours`; $('queueMiniPct').textContent = `${Math.round(pct * 100)} %`; $('queueMiniBar').style.width = `${pct * 100}%`;
+  $('queueMini').hidden = !active; $('queueMiniText').textContent = `${plural(active, 'export')} en cours`; $('queueMiniPct').textContent = `${Math.round(pct * 100)} %`;
+  $('queueMini').style.setProperty('--p', String(Math.round(pct * 100)));
   const mine = project && jobs.find(j => j.project === project.path);
   $('singleJob').hidden = !mine;
   if (mine) $('singleJob').replaceChildren(el('span', `${mine.stage} · ${Math.round((mine.progress || 0) * 100)} %`, 'subtle'));
+  renderOutput();
 }
+function renderOutput() {
+  const s = exportSettings(), rows = [['Dossier ELPO', s.outputDir || 'Non choisi'], ['Format', `${s.resolution === 'project' ? 'Résolution du projet' : s.resolution + 'p'} · ${s.codec === 'hevc' ? 'HEVC' : 'H.264'} · ${s.hardware ? 'VideoToolbox' : 'logiciel'}`], ['Nom', s.pattern], ['Exports CapCut', pilotSettings.exportDir || 'Non choisi']];
+  $('roomOutput').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', k), el('dd', v)]));
+}
+$('queueMini').onclick = showRoom;
+$('pilotResume').onclick = () => task(async () => { await unwrap(api.pilotResume()); });
+$('pilotAbort').onclick = () => task(async () => { await unwrap(api.pilotStop()); });
 $('queueStop').onclick = () => task(async () => { if (!(await ask('Arrêter toute la production ?', 'Les exports en cours sont interrompus, aucun fichier incomplet n’est conservé.', 'Tout arrêter'))) return; await unwrap(api.exportCancel(null)); await unwrap(api.pilotStop()); });
 $('queueClear').onclick = () => task(async () => { exportJobs = await unwrap(api.exportClear()); pilotJobs = pilotJobs.filter(j => ['queued', 'running'].includes(j.status)); renderQueue(); });
 
@@ -822,7 +967,7 @@ function renderFfmpeg() {
 function renderSettings() {
   renderFfmpeg(); renderStyles();
   const p = pilotSettings;
-  $('tilePoint').textContent = p.tile ? `x ${p.tile.x}, y ${p.tile.y}` : 'Non calibrée';
+  $('tilePoint').textContent = p.tile ? `x ${p.tile.x}, y ${p.tile.y}` : 'Pas encore visée';
   $('exportPoint').textContent = p.exportButton ? `x ${p.exportButton.x}, y ${p.exportButton.y}` : 'Touche Entrée utilisée';
   $('capcutExportDir').textContent = p.exportDir || 'Non choisi';
   for (const [id, key] of [['pOpenWith', 'openWith'], ['pLaunch', 'launchSeconds'], ['pOpen', 'openSeconds'], ['pDialog', 'dialogSeconds'], ['pStable', 'stableSeconds'], ['pTimeout', 'timeoutMinutes'], ['pMissing', 'missing']]) if (p[key] !== undefined) $(id).value = p[key];
@@ -837,21 +982,23 @@ async function savePilot(extra = {}) {
 $('pilotSave').onclick = () => task(async () => { await savePilot(); notice('Réglages du pilotage enregistrés.'); });
 $('clearExportPoint').onclick = () => task(() => savePilot({ exportButton: null }));
 $('chooseCapcutDir').onclick = () => task(async () => { const dir = await unwrap(api.chooseDir({ purpose: 'capcut' })); if (dir) await savePilot({ exportDir: dir }); });
-$('pilotAccess').onclick = () => task(async () => { const okay = await unwrap(api.pilotAccess()); $('accessState').textContent = okay ? 'Accessibilité autorisée' : 'Accessibilité à autoriser'; $('accessState').className = `pill ${okay ? 'green' : 'red'}`; if (!okay) notice('Coche ElpoAiAutoCapcut dans Réglages Système → Confidentialité et sécurité → Accessibilité, puis réessaie.'); });
-document.querySelectorAll('[data-calibrate]').forEach(b => b.onclick = () => task(async () => {
-  const target = b.dataset.calibrate;
-  $('calibrateText').textContent = target === 'tile' ? 'Ouvre l’accueil de CapCut et place le pointeur au centre de la première vignette de projet.' : 'Ouvre la fenêtre d’export de CapCut et place le pointeur sur le bouton « Exporter ».';
-  $('calibrateCount').textContent = '5'; $('calibrate').hidden = false;
-  try { pilotSettings = await unwrap(api.pilotCalibrate(target)); notice('Position enregistrée.'); } finally { $('calibrate').hidden = true; }
-  renderSettings(); renderPilotState();
-}));
+$('pilotAccess').onclick = () => task(async () => { const okay = await unwrap(api.pilotAccess()); pilotAccessOk = okay; renderPilotState(); $('accessState').textContent = okay ? 'Accessibilité autorisée' : 'Accessibilité à autoriser'; $('accessState').className = `pill ${okay ? 'green' : 'red'}`; if (!okay) notice('Coche ElpoAiAutoCapcut dans Réglages Système → Confidentialité et sécurité → Accessibilité, puis réessaie.'); });
+// A full-screen sight opens over CapCut: one click records the point, Escape cancels.
+function aim(target) {
+  return task(async () => {
+    const next = await unwrap(api.pilotCalibrate(target));
+    if (next) { pilotSettings = next; notice('Position enregistrée.'); } else notice('Visée annulée : position inchangée.');
+    renderSettings(); renderPilotState();
+  });
+}
+document.querySelectorAll('[data-calibrate]').forEach(b => b.onclick = () => aim(b.dataset.calibrate));
 
 // ── Command palette & keyboard ────────────────────────────────────────────────────
 function commands() {
   const list = [
-    ['Aller à Projets', '⌘1', () => go('library')], ['Montage complet', '⌘2', () => go('build')], ['Production en lot', '⌘3', () => go('batch')],
-    ['Bibliothèque : transitions, effets, filtres', '⌘4', () => go('fx')], ['Sauvegardes', '⌘5', () => go('vault')], ['Réglages', '⌘,', () => go('settings')],
-    ['Étape Médias', '', () => step('media')], ['Étape Scènes', '', () => step('scenes')], ['Étape Style', '', () => step('style')], ['Étape Vérifier', '', () => step('review')], ['Étape Générer et exporter', '', () => step('deliver')],
+    ['Aller à Projets', '⌘1', () => go('library')], ['Plateau (montage complet)', '⌘2', () => go('build')], ['Production en lot', '⌘3', () => go('batch')],
+    ['Bibliothèque : transitions, effets, filtres', '⌘4', () => go('fx')], ['Coffre : sauvegardes', '⌘5', () => go('vault')], ['Réglages', '⌘,', () => go('settings')],
+    ['Plateau : scènes', '', () => step('scenes')], ['Plateau : style', '', () => step('style')], ['Plateau : vérifier', '', () => step('review')], ['Plateau : écrire et exporter', '', () => step('deliver')], ['Salle de rendu', '', showRoom],
     ['Analyser et vérifier', '⌘↩', () => !$('analyze').disabled && $('analyze').onclick()], ['Charger un SRT', '', () => $('loadSrt').onclick()],
     ['Proposer les scènes depuis le SRT', '', () => $('groupSrt').onclick()], ['Partir des médias', '', () => $('createEven').onclick()],
     ['Tout cocher dans Projets', '⌘A', () => { projects.forEach(p => selected.add(p.path)); renderGrid(); renderBatch(); }],
@@ -859,7 +1006,7 @@ function commands() {
     ['Production en lot : exporter les projets cochés', '', () => { $('batchBuild').checked = false; $('batchExport').checked = true; go('batch'); }],
     ['Exporter le projet actif', '', () => { step('deliver'); if (!$('exportOne').disabled) $('exportOne').onclick(); }],
     ['Générer dans CapCut', '', () => step('deliver')], ['Bibliothèque : mes favoris', '', () => { fxShow = 'favorites'; go('fx'); }],
-    ['Calibrer le pilotage de CapCut', '', () => go('settings')], ['Vidéos exportées', '', () => go('vault')], ['Ouvrir CapCut', '⇧⌘O', () => $('openCapcut').onclick()], ['Changer le dossier des projets', '', () => $('chooseRoot').onclick()],
+    ['Viser les cibles du pilotage CapCut', '', () => go('settings')], ['Vidéos exportées', '', () => go('vault')], ['Ouvrir CapCut', '⇧⌘O', () => $('openCapcut').onclick()], ['Changer le dossier des projets', '', () => $('chooseRoot').onclick()],
     ['Actualiser les projets', '', () => $('refresh').onclick()], ['Actualiser la bibliothèque', '', () => $('fxRefresh').onclick()],
   ];
   for (const p of projects.slice(0, 200)) list.push([`Ouvrir « ${p.name} »`, 'Projet', () => openProject(p.path)]);
@@ -884,7 +1031,7 @@ $('paletteInput').addEventListener('keydown', e => {
 $('palette').onclick = e => { if (e.target === $('palette')) closePalette(); };
 $('paletteButton').onclick = openPalette;
 function command(name) {
-  ({ library: () => go('library'), build: () => go('build'), batch: () => go('batch'), 'library-fx': () => go('fx'), vault: () => go('vault'), settings: () => go('settings'), palette: openPalette, 'open-capcut': () => $('openCapcut').onclick() })[name]?.();
+  ({ library: () => go('library'), build: () => go('build'), batch: () => go('batch'), 'batch-room': showRoom, 'library-fx': () => go('fx'), vault: () => go('vault'), settings: () => go('settings'), palette: openPalette, 'open-capcut': () => $('openCapcut').onclick() })[name]?.();
 }
 document.addEventListener?.('keydown', e => {
   const typing = /INPUT|TEXTAREA|SELECT/.test(e.target?.tagName || '');
@@ -896,6 +1043,34 @@ document.addEventListener?.('keydown', e => {
   if (e.key === ' ' && !typing && currentPage === 'build' && currentStep === 'review') { e.preventDefault(); togglePlay(); }
 });
 window.addEventListener?.('resize', () => drawWave());
+
+// Drag and drop: a folder becomes the image source of the active project, a .srt or .json is loaded in the scenes.
+let dragDepth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+document.addEventListener?.('dragenter', e => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; $('dropZone').hidden = false; });
+document.addEventListener?.('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+document.addEventListener?.('dragleave', e => { if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('dropZone').hidden = true; });
+document.addEventListener?.('drop', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; $('dropZone').hidden = true;
+  const paths = [...(e.dataTransfer.files || [])].map(f => api.pathForFile?.(f)).filter(Boolean);
+  if (paths.length) task(() => handleDrop(paths));
+});
+async function handleDrop(paths) {
+  for (const file of paths.slice(0, 3)) {
+    const r = await unwrap(api.dropped(file));
+    if (r.kind === 'folder') {
+      if (!project) throw new Error('Ouvre d’abord un projet dans le Plateau, puis dépose le dossier d’images.');
+      if (!(await confirmVisualChange())) return;
+      await unwrap(api.useFlowFolder({ project: project.path, folder: r.path })); await selectProject(); go('build');
+      notice(`Dossier « ${r.name} » : ${plural(project.visuals.length, 'image')}, source du projet.`);
+    } else if (r.kind === 'srt') {
+      srtFile = r; $('srtName').textContent = r.name; $('clearSrt').hidden = false; invalidate(); placementHint(); go('build'); step('scenes'); notice(`SRT chargé : ${r.name}.`);
+    } else {
+      syncPlan = parseScenes(r.text); scenesFile = r; setPlacement('sync'); renderSync(); $('scenesName').textContent = r.name; $('clearScenes').hidden = false; invalidate(); go('build'); step('scenes'); notice(`Plan chargé : ${r.name}.`);
+    }
+  }
+}
 
 function showRoot(r) { const parts = String(r || '').split('/').filter(Boolean); $('root').textContent = r ? (parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : r) : 'Dossier à sélectionner'; $('root').title = r || ''; }
 // ── Wiring ─────────────────────────────────────────────────────────────────────
@@ -917,7 +1092,7 @@ api.on?.(({ type, data }) => {
   else if (type === 'pilot') { pilotJobs = data; renderQueue(); }
   else if (type === 'pilotLog') { $('pilotLogBox').hidden = false; const li = el('li', `${new Date(data.at).toLocaleTimeString('fr-FR')} ${data.project ? data.project + ' : ' : ''}${data.text}`); $('pilotLog').append(li); li.scrollIntoView?.({ block: 'nearest' }); }
   else if (type === 'pilotError') showError(data);
-  else if (type === 'calibrate') $('calibrateCount').textContent = String(data.seconds);
+  else if (type === 'pilotPaused') { pilotPaused = !!data.paused; $('pilotPanel').hidden = !pilotPaused; if (pilotPaused) { $('pilotPauseText').textContent = data.reason || 'Le pilotage attend avant sa prochaine action.'; showRoom(); } }
   else if (type === 'command') command(data);
 });
 
@@ -926,13 +1101,14 @@ async function start() {
   if (status.platform === 'darwin') { document.body.classList.add('vibrant'); window.elpoMenu = true; }
   showRoot(status.root); preferences = status.preferences || {}; styles = status.styles || {};
   favorites = { transitions: [], effects: [], filters: [], ...(status.favorites || {}) }; pilotSettings = status.pilot || {}; ffmpeg = status.ffmpeg || null;
-  if (status.version) $('version').textContent = `Édition locale ${status.version}`;
+  if (typeof status.access === 'boolean') pilotAccessOk = status.access;
+  if (status.version) $('version').textContent = `v${status.version}`;
   applyStyle(preferences); applyExportSettings(status.exportSettings || {}); renderStyles(); renderFfmpeg(); renderMotions(); placementHint();
   if (status.initialized) { await refresh(); await loadCatalog(); }
   else notice('Bienvenue. Choisis le dossier qui contient tes projets CapCut pour commencer.');
   try { const jobs = await unwrap(api.jobs()); exportJobs = jobs.export; pilotJobs = jobs.pilot; renderQueue(); } catch { /* no running jobs */ }
   document.body.classList.remove('booting');
 }
-go('library'); step('media'); go('library');
+go('library'); step('scenes'); setBatchView('setup'); go('library');
 task(start).then(poll);
 setInterval(poll, 10000);
