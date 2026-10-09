@@ -17,15 +17,24 @@ jobs:
         with: { node-version: 22, cache: npm }
       - name: Check the Apple Silicon runner
         run: test "$(uname -m)" = arm64
+      - name: Read the version from package.json
+        id: version
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error title=Version::Le tag $GITHUB_REF_NAME ne correspond pas à package.json ($VERSION)."
+            exit 1
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
       - run: brew install ffmpeg
       - run: npm ci --no-audit --no-fund
       - name: Run the complete test suite
         run: node scripts/ci-command.cjs npm test
       - run: node scripts/ci-command.cjs npm run dist:mac
       - name: Verify the DMG and launch the packaged app
-        run: node scripts/ci-command.cjs node scripts/verify-dmg.mjs dist/ElpoAiAutoCapcut-0.5.0-arm64.dmg
+        run: node scripts/ci-command.cjs node scripts/verify-dmg.mjs "dist/ElpoAiAutoCapcut-${{ steps.version.outputs.value }}-arm64.dmg"
       - name: Compute the download checksum
-        run: cd dist && shasum -a 256 ElpoAiAutoCapcut-0.5.0-arm64.dmg > SHA256SUMS.txt
+        run: cd dist && shasum -a 256 "ElpoAiAutoCapcut-${{ steps.version.outputs.value }}-arm64.dmg" > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: ElpoAiAutoCapcut-dmg

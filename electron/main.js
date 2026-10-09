@@ -9,6 +9,7 @@ import { MediaServer } from '../lib/media-server.js';
 import { ExportQueue, findFfmpeg } from '../lib/export-queue.js';
 import { CapcutPilot, DEFAULT_PILOT } from '../lib/capcut-pilot.js';
 import { macActions, CAPCUT_ID } from '../lib/mac-automation.js';
+import { waveform } from '../lib/waveform.js';
 
 const media = new MediaServer();
 protocol.registerSchemesAsPrivileged([{ scheme: 'elpo-media', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }]);
@@ -69,7 +70,11 @@ function finished(kind, jobs) {
   dock();
 }
 function makePilot() {
-  pilot?.stop();
+  // Never replace (and so abort) a pilot that is exporting.
+  if (pilotRunning()) throw Object.assign(new Error('Le pilotage CapCut est en cours : attends sa fin.'), { code: 'PILOT_BUSY' });
+  pilot?.stop(); pilot = null;
+  // No pilot until a CapCut projects folder is open (FFmpeg can be detected before that).
+  if (!initialized) return;
   pilot = new CapcutPilot({ root, backupDir: path.join(app.getPath('userData'), 'backups'), settings: settings.pilot, actions: macActions({ ffprobe: tool?.ffprobe, trusted: () => !mac || systemPreferences.isTrustedAccessibilityClient(false) }) });
   pilot.on('update', jobs => { send('pilot', jobs); dock(); });
   pilot.on('log', line => send('pilotLog', line));
@@ -160,6 +165,19 @@ else {
       if (!reply.ok) return reply;
       return ok(media.grant([...reply.result.visuals, ...reply.result.audios], 'project'));
     });
+    // Voice-over peaks, computed once per file version by FFmpeg (see lib/waveform.js).
+    const waves = new Map();
+    register('elpo:waveform', async url => {
+      const entry = typeof url === 'string' ? media.resolve(url) : null;
+      if (!entry || !/^(audio|video)\//.test(entry.type)) throw new Error('Média non autorisé.');
+      if (!tool?.ffmpeg) throw Object.assign(new Error('FFmpeg est nécessaire pour afficher la forme d’onde.'), { code: 'FFMPEG_MISSING' });
+      const key = `${entry.real}|${entry.size}|${entry.mtimeMs}`;
+      if (!waves.has(key)) {
+        if (waves.size >= 24) waves.delete(waves.keys().next().value);
+        waves.set(key, waveform(tool.ffmpeg, entry.real).catch(error => { waves.delete(key); throw error; }));
+      }
+      return ok(await waves.get(key));
+    });
     register('elpo:loadFile', async type => {
       if (!['scenes', 'srt'].includes(type)) throw new Error('Format inconnu.');
       const r = await dialog.showOpenDialog(window, { title: type === 'srt' ? 'SRT — repères de lecture' : 'Plan de scènes JSON', properties: ['openFile'], filters: [{ name: type.toUpperCase(), extensions: [type === 'srt' ? 'srt' : 'json'] }] });
@@ -204,6 +222,9 @@ else {
     // ELPO render (FFmpeg).
     const knownOutputs = () => new Set([...settings.history.map(h => h.output), ...(queue?.list() || []).map(j => j.output), ...(pilot?.list() || []).map(j => j.output)].filter(Boolean));
     register('elpo:ffmpeg', async ({ choose = false } = {}) => {
+      // Checked first: nothing is saved or replaced while an export or a pilot runs.
+      if (queue?.active()) throw new Error('Attends la fin des exports en cours.');
+      if (pilotRunning()) throw new Error('Attends la fin du pilotage CapCut.');
       if (choose) {
         const r = await dialog.showOpenDialog(window, { title: 'Emplacement de FFmpeg', properties: ['openFile', 'showHiddenFiles'], defaultPath: fs.existsSync('/opt/homebrew/bin') ? '/opt/homebrew/bin' : '/usr/local/bin' });
         if (r.canceled) return ok(tool);
@@ -211,7 +232,6 @@ else {
         if (!found || found.ffmpeg !== r.filePaths[0]) throw new Error('Ce fichier n’est pas un FFmpeg utilisable.');
         settings.ffmpegPath = r.filePaths[0]; saveSettings();
       }
-      if (queue?.active()) throw new Error('Attends la fin des exports en cours.');
       await prepareTools(); makePilot(); return ok(tool);
     });
     register('elpo:chooseDir', async ({ purpose } = {}) => {
@@ -253,16 +273,25 @@ else {
       return ok(settings.pilot);
     });
     register('elpo:pilotAccess', async () => ok(!mac || systemPreferences.isTrustedAccessibilityClient(true)));
+    let calibrating = false;
     register('elpo:pilotCalibrate', async target => {
       if (!['tile', 'exportButton'].includes(target)) throw new Error('Cible inconnue.');
-      // Five seconds to place the pointer over the target in CapCut.
-      for (let s = 5; s > 0; s--) { send('calibrate', { target, seconds: s }); await new Promise(r => setTimeout(r, 1000)); }
-      const point = screen.getCursorScreenPoint();
-      settings.pilot = { ...settings.pilot, [target]: point }; saveSettings(); makePilot(); window?.focus();
-      return ok(settings.pilot);
+      if (pilotRunning()) throw new Error('Pilotage en cours : attends sa fin avant de calibrer.');
+      if (calibrating) throw new Error('Un calibrage est déjà en cours.');
+      calibrating = true;
+      try {
+        // Five seconds to place the pointer over the target in CapCut.
+        for (let s = 5; s > 0; s--) { send('calibrate', { target, seconds: s }); await new Promise(r => setTimeout(r, 1000)); }
+        if (pilotRunning()) throw new Error('Un pilotage a démarré pendant le calibrage : position non enregistrée.');
+        const point = screen.getCursorScreenPoint();
+        settings.pilot = { ...settings.pilot, [target]: point }; saveSettings(); makePilot(); window?.focus();
+        return ok(settings.pilot);
+      } finally { calibrating = false; }
     });
     register('elpo:pilotStart', async ({ projects, test = false } = {}) => {
       if (busy) throw new Error('Une écriture ELPO est en cours.');
+      if (pilotRunning()) throw new Error('Un pilotage CapCut est déjà en cours.');
+      if (!pilot) throw new Error('Choisis le dossier de projets CapCut.');
       if (!Array.isArray(projects) || !projects.length) throw new Error('Coche au moins un projet.');
       const list = projects.filter(p => typeof p?.path === 'string' && path.dirname(p.path) === root).map(p => ({ path: p.path, name: String(p.name || '') }));
       pilot.run(list, { exportDir: settings.pilot.exportDir, test }).catch(e => send('pilotError', { message: e.message, code: e.code }));

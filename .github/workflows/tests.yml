@@ -1,0 +1,20 @@
+name: Tests
+on:
+  push:
+    branches: ['**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install FFmpeg (real render test)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # No npm install needed: the tests use only Node and FFmpeg.
+      - name: Run the complete test suite
+        run: node scripts/ci-command.cjs npm test

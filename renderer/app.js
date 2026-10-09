@@ -569,12 +569,12 @@ function handle(index, at, total) {
 function placePlayhead(us) { const total = (ribbonScenes().at(-1)?.end || 1) * 1e6; $('playhead').style.left = `${Math.min(100, us / total * 100)}%`; }
 async function loadWave() {
   const path = $('audio').value, url = mediaUrls[path];
-  if (!url || waveCache.has(path) || typeof fetch !== 'function' || !window.AudioContext) { drawWave(); return; }
+  if (!url || waveCache.has(path) || typeof api.waveform !== 'function') { drawWave(); return; }
   try {
-    const buffer = await (await fetch(url)).arrayBuffer(), ctx = new AudioContext(), audio = await ctx.decodeAudioData(buffer); ctx.close();
-    const data = audio.getChannelData(0), bins = 2400, step = Math.max(1, Math.floor(data.length / bins)), peaks = new Float32Array(bins);
-    for (let i = 0; i < bins; i++) { let m = 0; for (let j = i * step, end = Math.min(data.length, j + step); j < end; j += 4) m = Math.max(m, Math.abs(data[j])); peaks[i] = m; }
-    waveCache.set(path, peaks); drawWave();
+    // Peaks come from FFmpeg in the main process: no full decode in this window.
+    const { peaks } = await unwrap(api.waveform(url));
+    if (peaks.length) waveCache.set(path, peaks);
+    drawWave();
   } catch { /* the ribbon works without a waveform */ }
 }
 function drawWave() {

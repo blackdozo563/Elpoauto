@@ -55,3 +55,29 @@ test('pilote : calibrage requis et projet hors dossier refusé', async () => {
     assert.throws(() => bumpProject(f.root, f.temp), e => e.code === 'PROJECT_PATH');
   } finally { f.cleanup(); }
 });
+test('pilote : un second lancement est refusé pendant la vérification d’accessibilité', async () => {
+  const f = fixture();
+  try {
+    const exportDir = path.join(f.temp, 'exports'); fs.mkdirSync(exportDir);
+    const { actions } = fakeActions(exportDir);
+    let grant; actions.accessibility = () => new Promise(resolve => { grant = resolve; });
+    const pilot = new CapcutPilot({ root: f.root, actions, settings: { tile: { x: 1, y: 1 }, launchSeconds: 0, openSeconds: 0, dialogSeconds: 0, stableSeconds: 0, quitSeconds: 1 } });
+    const first = pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir });
+    assert.ok(pilot.controller, 'le pilotage est réservé dès l’appel');
+    await assert.rejects(pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir }), e => e.code === 'PILOT_BUSY');
+    grant(true);
+    const [job] = await first;
+    assert.equal(job.status, 'done', job.error);
+    assert.equal(pilot.controller, null);
+  } finally { f.cleanup(); }
+});
+test('pilote : un refus d’accessibilité libère la réservation', async () => {
+  const f = fixture();
+  try {
+    const { actions } = fakeActions(f.temp);
+    actions.accessibility = async () => false;
+    const pilot = new CapcutPilot({ root: f.root, actions, settings: { tile: { x: 1, y: 1 } } });
+    await assert.rejects(pilot.run([{ path: f.project, name: 'x' }], { exportDir: f.temp }), e => e.code === 'ACCESSIBILITY');
+    assert.equal(pilot.controller, null);
+  } finally { f.cleanup(); }
+});

@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('elpo', {
   engine: (action, args) => ipcRenderer.invoke('elpo:engine', { action, args }),
   overview: call('elpo:overview'),
   mediaSources: call('elpo:mediaSources'),
+  waveform: call('elpo:waveform'),
   loadFile: call('elpo:loadFile'),
   subtitles: call('elpo:subtitles'),
   export: (name, text) => ipcRenderer.invoke('elpo:export', { name, text }),
