@@ -1,0 +1,41 @@
+name: Prototype Swift CapCut AX (aucune release)
+on:
+  push:
+    branches: ['codex/capcut-ax-prototype']
+    paths: ['prototype/capcut-ax/**', '.github/workflows/prototype-capcut-ax.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prototype:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vérifier ARM64 et compiler Swift
+        run: |
+          test "$(uname -m)" = arm64
+          bash prototype/capcut-ax/build.sh
+      - name: Contrôles de commande unique et coordonnées
+        run: '"dist/capcut-ax-prototype/CapCut AX Prototype.app/Contents/MacOS/CapCutAXPrototype" --self-test > dist/capcut-ax-prototype/controles-techniques.json'
+      - name: Ouvrir le prototype sans commande CapCut
+        run: '"dist/capcut-ax-prototype/CapCut AX Prototype.app/Contents/MacOS/CapCutAXPrototype" --smoke-ui > dist/capcut-ax-prototype/interface.json'
+      - run: brew install ffmpeg
+      - name: Vérifier le décodage natif complet et refuser un MP4 tronqué
+        run: |
+          ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=320x180:rate=24 -f lavfi -i sine=frequency=440 -t 2 -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart /tmp/prototype-complet.mp4
+          "dist/capcut-ax-prototype/CapCut AX Prototype.app/Contents/MacOS/CapCutAXPrototype" --verify-mp4 /tmp/prototype-complet.mp4 > dist/capcut-ax-prototype/validation-media-synthetique.json
+          python3 -c 'from pathlib import Path; b=Path("/tmp/prototype-complet.mp4").read_bytes(); Path("/tmp/prototype-tronque.mp4").write_bytes(b[:len(b)//2])'
+          if "dist/capcut-ax-prototype/CapCut AX Prototype.app/Contents/MacOS/CapCutAXPrototype" --verify-mp4 /tmp/prototype-tronque.mp4 > /tmp/refus.json 2>&1; then
+            echo '::error::Un fichier tronqué a été accepté.'
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CapCut-AX-Prototype-arm64
+          if-no-files-found: error
+          path: |
+            dist/capcut-ax-prototype/*.zip
+            dist/capcut-ax-prototype/*.md
+            dist/capcut-ax-prototype/*.json
+            dist/capcut-ax-prototype/SHA256SUMS.txt
