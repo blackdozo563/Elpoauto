@@ -1,5 +1,12 @@
 # Changements
 
+## 0.6.3
+- **ELPO sait maintenant que l'export est fini.** CapCut annonce sur sa feuille le chemin exact du fichier qu'il va écrire ; ce chemin n'était utilisé que pour contrôler l'identité du projet et choisir le dossier — le fichier lui-même n'était jamais regardé. ELPO le surveille directement, en plus du balayage du dossier (qui ne descend que d'un niveau et rate tout le reste).
+- **Même correction pour la confirmation du clic** : `exportAccepted` ne regardait que le dossier surveillé. Un export écrit ailleurs était pris pour un clic non reçu, et ELPO renvoyait Entrée par-dessus.
+- **Fin de la famine de la boucle de surveillance.** Une lecture approfondie de l'interface coûte 20 à 25 s et bloquait la recherche du fichier à chaque tour : CapCut avait terminé pendant qu'ELPO lisait encore l'accessibilité. Une fois l'export démarré, le fichier est la seule vérité ; CapCut n'est re-interrogé qu'après 45 s sans fichier.
+- **CapCut est interrogé sur la fin de l'export** : plus d'indicateur de progression et retour à l'éditeur ou à l'accueil = export terminé. ELPO le journalise et repart à la recherche du fichier annoncé.
+- **Un fichier que FFmpeg ne sait pas lire n'est plus attendu en silence** : le blocage est écrit dans le journal au lieu de tourner jusqu'au délai de 60 minutes. Validation : 152 tests réussis (2 ajoutés) ; le comportement dans CapCut réel reste à vérifier sur Mac.
+
 ## 0.6.2
 - **Le clic sur « Exporter » partait sans que CapCut soit au premier plan.** Toutes les autres actions de la séquence sont précédées de `activate()` ; celle qui démarre réellement l'export ne l'était pas, alors qu'elle suit des lectures d'interface de plusieurs dizaines de secondes. `activate()` + 600 ms sont maintenant envoyés avant le clic.
 - **Le clic est vérifié au lieu d'être supposé reçu.** Quand CapCut accepte un export, il remplace la feuille par sa fenêtre de progression : si la feuille est toujours ouverte quelques secondes après le clic, celui-ci n'a pas été reçu. ELPO le constate et réessaie par la touche Entrée, au lieu d'attendre 90 s un fichier qui ne viendra jamais.

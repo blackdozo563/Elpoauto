@@ -48,7 +48,8 @@ function setup(options = {}) {
     },
     click: async (point, double) => {
       log.push(['click', point, double]);
-      if (point.x === 1028 && point.y === 755 && !options.noFile && !options.exportNeedsReturn) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO(1).mp4'), 'test video');
+      if (point.x === 1028 && point.y === 755 && options.writeTo) { const p = options.writeTo(exportDir); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, 'test video'); }
+      else if (point.x === 1028 && point.y === 755 && !options.noFile && !options.exportNeedsReturn) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO(1).mp4'), 'test video');
       // CapCut accepte l'export : la feuille laisse place à sa fenêtre de progression.
       if (point.x === 1028 && point.y === 755 && options.sheetClosesOnExport) page = 'exporting';
       if (point.x === homePoint.x && point.y === homePoint.y) page = 'home';
@@ -66,7 +67,7 @@ function setup(options = {}) {
         setTimeout(() => { fs.renameSync(path.join(temp, '1fcfdfb9.mp4'), path.join(exportDir, 'Test ELPO.mp4')); }, options.encodeFirst);
       } else if (key === 'return' && (!options.noFile || options.exportNeedsReturn)) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO.mp4'), 'test video');
     },
-    playable: async () => true,
+    playable: async () => !options.unplayable,
   };
   const pilot = new CapcutPilot({ root: f.root, backupDir: f.backupDir, actions, settings: {
     tile, frames: { tile: frame }, launchSeconds: 0, openSeconds: 0, dialogSeconds: 0, stableSeconds: 0, startSeconds: 0, closeKeys: [],
@@ -481,5 +482,29 @@ test('pilote : la fermeture de la feuille confirme le démarrage, sans fichier n
     assert.equal(observed, true, 'démarrage confirmé par la disparition de la feuille');
     assert.equal(job.status, 'cancelled');
     assert.ok(!s.log.includes('return'), 'le clic a été reçu : pas de second envoi');
+  } finally { s.f.cleanup(); }
+});
+
+// ── Savoir que l'export est fini ─────────────────────────────────────────────────
+test('pilote : le fichier annoncé par CapCut est surveillé directement, pas seulement le dossier', async () => {
+  // CapCut écrit deux niveaux plus bas : le balayage du dossier ne descend que d'un
+  // niveau et ne le verrait jamais. Seul le chemin annoncé permet de conclure.
+  const deep = dir => path.join(dir, 'sous', 'profond', 'Test ELPO.mp4');
+  const s = setup({ writeTo: deep, sheetFor: dir => ({ windows: [{ title: 'CapCut', nodes: [...editorNodes, ...sheetNodes(deep(dir))] }] }) });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error);
+    assert.equal(job.output, deep(s.exportDir));
+    assert.ok(s.pilot.log.some(l => /Fichier d’export apparu/.test(l.text)));
+  } finally { s.f.cleanup(); }
+});
+
+test('pilote : un fichier que FFmpeg ne sait pas lire est signalé, pas attendu en silence', async () => {
+  const s = setup({ unplayable: true, sheetFor: sheetIn });
+  try {
+    let warned = false;
+    s.pilot.on('log', line => { if (/durée est illisible pour FFmpeg/.test(line.text)) { warned = true; s.pilot.stop(); } });
+    await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(warned, true, 'le blocage FFmpeg doit apparaître dans le journal');
   } finally { s.f.cleanup(); }
 });
