@@ -7,12 +7,14 @@ final class PrototypeRunner {
     let ledger: URL
     let expectedName: String
     let allowCoordinates: Bool
+    let authorizedFolder: URL
     let ax: NativeAX
     var command = SingleCommand()
-    init(report: Evidence, cancel: Cancellation, ledger: URL, expectedName: String, allowCoordinates: Bool) {
+    init(report: Evidence, cancel: Cancellation, ledger: URL, expectedName: String, allowCoordinates: Bool, authorizedFolder: URL) {
         self.report = report; self.cancel = cancel; self.ledger = ledger
         self.expectedName = expectedName.precomposedStringWithCanonicalMapping
         self.allowCoordinates = allowCoordinates; ax = NativeAX(report: report, cancel: cancel)
+        self.authorizedFolder = authorizedFolder
     }
     func nameMatches(_ url: URL) -> Bool {
         let name = url.deletingPathExtension().lastPathComponent
@@ -84,8 +86,11 @@ final class PrototypeRunner {
         let button = try finalButton(fresh)
         guard try outputURL(fresh) == target else { throw PrototypeFailure.stopped("Le chemin de sortie a changé avant la commande.") }
         let folder = target.deletingLastPathComponent()
+        guard folder.resolvingSymlinksInPath().path.precomposedStringWithCanonicalMapping == authorizedFolder.resolvingSymlinksInPath().path.precomposedStringWithCanonicalMapping else {
+            throw PrototypeFailure.stopped("Le dossier annoncé par CapCut n’est pas celui choisi avant le test. Aucun clic envoyé.")
+        }
         var baseline: [String: FileStamp] = [:]
-        for file in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [] where nameMatches(file) && file.pathExtension.lowercased() == "mp4" {
+        for file in try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) where nameMatches(file) && file.pathExtension.lowercased() == "mp4" {
             if let stamp = FileStamp.read(file) { baseline[file.path] = stamp }
         }
         var tempPrevious = encodingFiles(folder)
@@ -198,7 +203,8 @@ final class PrototypeRunner {
                     report.set("validation", validation); report.set("output", file.path)
                     report.set("capcutUICompletionObserved", uiFinished)
                     report.set("functionalProof", true); report.set("status", "export_reel_valide")
-                    try FileManager.default.removeItem(at: ledger)
+                    do { try FileManager.default.removeItem(at: ledger) }
+                    catch { report.set("ledgerRemovalError", String(describing: error)) }
                     report.phase("mp4_valide", "Export réel validé : vidéo et audio intégralement décodés. Rapport enregistré.")
                     return
                 }

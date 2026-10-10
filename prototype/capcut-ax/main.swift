@@ -30,6 +30,7 @@ final class PrototypeApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let expected = NSTextField(string: "TESTO")
     let start = NSButton(title: "Lancer le test d’export", target: nil, action: nil)
     let permission = NSButton(title: "Autoriser ce prototype", target: nil, action: nil)
+    let chooseFolder = NSButton(title: "Choisir le dossier d’export déjà configuré dans CapCut", target: nil, action: nil)
     let stop = NSButton(title: "Arrêter l’observation", target: nil, action: nil)
     let reveal = NSButton(title: "Afficher le rapport JSON", target: nil, action: nil)
     let reset = NSButton(title: "Réinitialiser le verrou après vérification dans CapCut", target: nil, action: nil)
@@ -37,10 +38,11 @@ final class PrototypeApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var running = false, attemptedInProcess = false
     var cancellation: Cancellation?
     var reportURL: URL?
+    var authorizedFolder: URL?
     let ledgerDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ElpoCapcutAXPrototype", isDirectory: true)
     var ledger: URL { ledgerDirectory.appendingPathComponent("commande-en-attente.json") }
     func applicationDidFinishLaunching(_ notification: Notification) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 650, height: 570), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 650, height: 610), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "CapCut AX Prototype — test natif du bouton final"; window.center(); window.delegate = self
         let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12
         let heading = NSTextField(labelWithString: "CapCut 9.3.0 · prototype autonome ARM64")
@@ -49,11 +51,11 @@ final class PrototypeApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let nameRow = NSStackView(views: [NSTextField(labelWithString: "Projet attendu :"), expected]); nameRow.orientation = .horizontal
         expected.widthAnchor.constraint(equalToConstant: 350).isActive = true
         fallback.state = .on
-        let views: [NSView] = [heading, explanation, nameRow, fallback, status, permission, start, stop, reveal, reset]
+        let views: [NSView] = [heading, explanation, nameRow, fallback, status, permission, chooseFolder, start, stop, reveal, reset]
         for view in views { stack.addArrangedSubview(view) }
         stack.translatesAutoresizingMaskIntoConstraints = false; window.contentView!.addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: window.contentView!.leadingAnchor, constant: 20), stack.trailingAnchor.constraint(equalTo: window.contentView!.trailingAnchor, constant: -20), stack.topAnchor.constraint(equalTo: window.contentView!.topAnchor, constant: 20)])
-        for (button, selector) in [(permission, #selector(authorize)), (start, #selector(begin)), (stop, #selector(stopObserving)), (reveal, #selector(showReport)), (reset, #selector(resetLedger))] { button.target = self; button.action = selector }
+        for (button, selector) in [(permission, #selector(authorize)), (chooseFolder, #selector(selectFolder)), (start, #selector(begin)), (stop, #selector(stopObserving)), (reveal, #selector(showReport)), (reset, #selector(resetLedger))] { button.target = self; button.action = selector }
         stop.isEnabled = false; reveal.isEnabled = false
         window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         if FileManager.default.fileExists(atPath: ledger.path) { status.stringValue = "Une commande précédente est sans preuve de fin. Nouveau test bloqué : vérifie d’abord CapCut." }
@@ -72,10 +74,11 @@ final class PrototypeApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func begin() {
         guard !running, !attemptedInProcess else { return }
         guard AXIsProcessTrusted() else { status.stringValue = "Autorise d’abord CapCut AX Prototype dans Accessibilité."; return }
+        guard let authorizedFolder = authorizedFolder else { status.stringValue = "Choisis d’abord le dossier d’export de CapCut pour accorder son accès avant le test."; return }
         do {
             try FileManager.default.createDirectory(at: ledgerDirectory, withIntermediateDirectories: true)
             guard !FileManager.default.fileExists(atPath: ledger.path) else { status.stringValue = "Verrou actif : aucune nouvelle commande autorisée."; return }
-            let directory = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0].appendingPathComponent("Rapports CapCut AX", isDirectory: true)
+            let directory = ledgerDirectory.appendingPathComponent("Rapports", isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let url = directory.appendingPathComponent("capcut-ax-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8)).json")
             let report = Evidence(url: url)
@@ -83,13 +86,14 @@ final class PrototypeApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard report.save() else { throw PrototypeFailure.stopped("Le rapport ne peut pas être enregistré sur le Bureau.") }
             reportURL = url; reveal.isEnabled = true
             let cancel = Cancellation(); cancellation = cancel
-            let runner = PrototypeRunner(report: report, cancel: cancel, ledger: ledger, expectedName: expected.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), allowCoordinates: fallback.state == .on)
-            running = true; start.isEnabled = false; expected.isEnabled = false; fallback.isEnabled = false; permission.isEnabled = false; reset.isEnabled = false; stop.isEnabled = true
+            let runner = PrototypeRunner(report: report, cancel: cancel, ledger: ledger, expectedName: expected.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), allowCoordinates: fallback.state == .on, authorizedFolder: authorizedFolder)
+            running = true; start.isEnabled = false; expected.isEnabled = false; fallback.isEnabled = false; permission.isEnabled = false; chooseFolder.isEnabled = false; reset.isEnabled = false; stop.isEnabled = true
             DispatchQueue.global(qos: .userInitiated).async {
                 runner.run()
                 DispatchQueue.main.async {
                     self.running = false; self.attemptedInProcess = runner.command.attempted
                     self.stop.isEnabled = false; self.permission.isEnabled = true
+                    self.chooseFolder.isEnabled = !runner.command.attempted
                     // A command consumes this process' test authorization permanently.
                     self.start.isEnabled = !runner.command.attempted
                     self.expected.isEnabled = !runner.command.attempted; self.fallback.isEnabled = !runner.command.attempted
@@ -99,6 +103,21 @@ final class PrototypeApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } catch { status.stringValue = String(describing: error) }
     }
     @objc func stopObserving() { cancellation?.stop(); status.stringValue = "Arrêt de l’observation demandé. CapCut continue son éventuel export." }
+    @objc func selectFolder() {
+        guard !running else { return }
+        let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false; panel.prompt = "Autoriser ce dossier"
+        panel.message = "Choisis le dossier déjà indiqué dans la feuille d’export CapCut. Le prototype ne modifie pas ce réglage."
+        if panel.runModal() == .OK, let folder = panel.url {
+            do {
+                // The system picker grants user-selected folder access before Run,
+                // including Desktop's privacy protection. No post-click TCC dialog.
+                _ = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+                authorizedFolder = folder; chooseFolder.title = "Dossier autorisé : \(folder.path)"
+                status.stringValue = "Dossier accessible. Vérifie le projet attendu et lance le test."
+            } catch { status.stringValue = "Dossier inaccessible : \(error)" }
+        }
+    }
     @objc func showReport() { if let url = reportURL { NSWorkspace.shared.activateFileViewerSelecting([url]) } }
     @objc func resetLedger() {
         guard !running else { return }
