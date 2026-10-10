@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
+import { execFileSync } from 'node:child_process';
 import { fixture } from './fixtures.js';
 import { CapcutPilot, snapshotExports, newExports } from '../lib/capcut-pilot.js';
-import { homeIsOpen, projectIsOpen, exportDialogIsOpen, controlPoint, exportIsRunning } from '../lib/capcut-ui.js';
-import { CAPCUT_UI_SCRIPT } from '../lib/mac-automation.js';
+import { homeIsOpen, projectIsOpen, exportDialogIsOpen, controlPoint, projectPoint, projectTarget, projectScroll, exportIsRunning, uiSummary } from '../lib/capcut-ui.js';
+import { CAPCUT_UI_APPLESCRIPT, CAPCUT_SCROLL_APPLESCRIPT, parseCapcutUi } from '../lib/mac-automation.js';
 
 const node = (name, extra = {}) => ({ name, role: 'AXStaticText', ...extra });
 const snapshot = (names, title = 'CapCut') => ({ windows: [{ title, nodes: names.map(n => typeof n === 'string' ? node(n) : n) }] });
@@ -71,15 +71,48 @@ test('interface CapCut : le bouton de l’éditeur ne suffit pas à confirmer le
   assert.deepEqual(controlPoint(snapshot([node('Accueil', { position: [20, 80], size: [40, 20] })]), ['accueil']), { x: 40, y: 90 });
 });
 
-test('lecture JXA : collecte des fenêtres CapCut et exclusion des éléments invisibles', () => {
-  const element = (name, children = [], visible = true) => ({ name: () => name, role: () => 'AXStaticText', description: () => '', value: () => name,
-    position: () => [20, 80], size: () => [40, 20], enabled: () => true, visible: () => visible, uiElements: () => children });
-  const window = element('CapCut', [element('Accueil'), element('Invisible', [], false)]);
-  const ui = JSON.parse(vm.runInNewContext(CAPCUT_UI_SCRIPT, { Application: () => ({ processes: { byName: name => {
-    assert.equal(name, 'CapCut'); return { windows: () => [window] };
-  } } }) }));
-  assert.deepEqual(ui.windows[0].nodes.map(n => n.name), ['CapCut', 'Accueil']);
-  assert.equal(ui.truncated, false);
+test('lecture AppleScript : titre Qt, index natif, dimensions et troncature conservés', () => {
+  const ui = parseCapcutUi('W\t1\tCapCut\tAXStandardWindow\t0\t0\t1000\t700\nE\t1\t8\tAXButton\t\t\tCréer un projet\t\ttrue\t150\t40\t600\t150\nT\n');
+  assert.equal(homeIsOpen(ui), true);
+  assert.equal(ui.windows[0].nodes[0].title, 'Créer un projet');
+  assert.equal(ui.windows[0].nodes[0].index, 8);
+  assert.equal(ui.truncated, true);
+  assert.match(uiSummary(ui), /lecture tronquée/);
+  // The real language compiler runs on the macOS build, before packaging.
+  if (process.platform === 'darwin') {
+    const f = fixture();
+    try {
+      for (const [i, source] of [CAPCUT_UI_APPLESCRIPT, CAPCUT_SCROLL_APPLESCRIPT].entries()) {
+        const file = path.join(f.temp, `probe-${i}.applescript`); fs.writeFileSync(file, source);
+        execFileSync('/usr/bin/osacompile', ['-o', path.join(f.temp, `probe-${i}.scpt`), file]);
+      }
+      const available = execFileSync('/usr/bin/osascript', ['-l', 'JavaScript', '-e', "ObjC.import('CoreGraphics'); typeof $.CGEventCreateScrollWheelEvent2;"], { encoding: 'utf8' });
+      assert.equal(available.trim(), 'function');
+    } finally { f.cleanup(); }
+  }
+});
+
+test('accueil : marqueur Qt uniquement dans title, projets sous le viewport', () => {
+  const ui = snapshot([node('', { title: ' Cre\u0301er   un projet… ' }), node('', { title: 'TESTO', index: 12, position: [400, 1200], size: [100, 25] })]);
+  ui.windows[0].index = 1; ui.windows[0].frame = { x: 0, y: 0, width: 1000, height: 800 };
+  assert.equal(homeIsOpen(ui), true, 'le titre Projets hors écran ne doit pas bloquer l’accueil');
+  assert.equal(controlPoint(ui, ['TESTO']), null, 'aucun clic hors de la fenêtre');
+  assert.deepEqual(projectTarget(ui, 'TESTO'), { windowIndex: 1, index: 12, label: 'TESTO' });
+  assert.deepEqual(projectScroll(ui, 'TESTO'), { point: { x: 450, y: 740 }, lines: -8 });
+  assert.equal(homeIsOpen(snapshot(['Accueil', 'Studio de conceptions', 'Inspiration'])), false);
+});
+
+test('éditeur et export : les libellés Qt title seuls sont reconnus', () => {
+  assert.equal(projectIsOpen(snapshot([node('', { title: 'Test ELPO' }), node('', { title: 'Exporter…' })]), 'Test ELPO'), true);
+  assert.equal(exportDialogIsOpen(snapshot([node('', { title: 'Exporter…' }), node('', { title: 'Re\u0301solution :' }), node('', { title: 'Débit binaire :' })])), true);
+  assert.equal(projectIsOpen(snapshot([node('', { title: 'Test ELPO 2' }), node('', { title: 'Exporter' })]), 'Test ELPO'), false);
+});
+
+test('identité du projet : accents conservés, Unicode composé ou décomposé équivalents', () => {
+  assert.equal(projectIsOpen(snapshot(['Priere', 'Exporter']), 'Prière'), false);
+  assert.equal(projectIsOpen(snapshot(['Prie\u0300re', 'Exporter']), 'Prière'), true);
+  const ui = snapshot(['Créer un projet', node('Priere', { position: [50, 100], size: [50, 50] })]);
+  assert.equal(projectPoint(ui, 'Prière'), null);
 });
 
 test('pilote : retour depuis le Studio IA, fenêtre calibrée, projet et dialogue confirmés avant export', async () => {
@@ -91,6 +124,48 @@ test('pilote : retour depuis le Studio IA, fenêtre calibrée, projet et dialogu
     assert.deepEqual(clicks, [['click', { x: 40, y: 90 }, false], ['click', { x: 200, y: 250 }, true]]);
     assert(s.log.indexOf('shortcut') > s.log.indexOf(clicks[1]));
     assert.ok(s.log.filter(Array.isArray).some(v => v[0] === 'restore'));
+  } finally { s.f.cleanup(); }
+});
+
+test('pilote : projet identifié par title puis révélé, sans dépendre de l’ancienne position calibrée', async () => {
+  const s = setup();
+  try {
+    s.pilot.settings.tile = { x: 10, y: 10 };
+    let revealed = false;
+    const read = s.actions.readUi;
+    s.actions.readUi = async () => {
+      const ui = await read();
+      if (!homeIsOpen(ui)) return ui;
+      return { windows: [{ index: 1, title: 'CapCut', frame: { x: 0, y: 0, width: 640, height: 480 }, nodes: [
+        node('', { title: 'Créer un projet' }),
+        node('', { index: 12, title: 'Test ELPO', position: [180, revealed ? 230 : 900], size: [40, 40] }),
+      ] }] };
+    };
+    s.actions.revealProject = async target => {
+      assert.deepEqual(target, { windowIndex: 1, index: 12, label: 'Test ELPO' }); revealed = true;
+    };
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error); assert.equal(revealed, true);
+    assert.ok(s.pilot.log.some(line => line.text.includes('vignette repérée par son nom')));
+  } finally { s.f.cleanup(); }
+});
+
+test('pilote : défilement de la grille si la vignette nommée est hors écran', async () => {
+  const s = setup();
+  try {
+    let visible = false;
+    const read = s.actions.readUi;
+    s.actions.revealProject = async () => 'unsupported';
+    s.actions.scrollAt = async (point, lines) => { assert.deepEqual(point, { x: 200, y: 420 }); assert.equal(lines, -8); visible = true; };
+    s.actions.readUi = async () => {
+      const ui = await read();
+      if (!homeIsOpen(ui)) return ui;
+      return { windows: [{ index: 1, title: 'CapCut', frame: { x: 0, y: 0, width: 640, height: 480 }, nodes: [
+        node('', { title: 'Créer un projet' }), node('', { title: 'Test ELPO', index: 12, position: [180, visible ? 230 : 900], size: [40, 40] }),
+      ] }] };
+    };
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error); assert.equal(visible, true);
   } finally { s.f.cleanup(); }
 });
 

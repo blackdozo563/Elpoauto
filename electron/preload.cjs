@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('elpo', {
   pilotStart: call('elpo:pilotStart'),
   pilotStop: call('elpo:pilotStop'),
   pilotResume: call('elpo:pilotResume'),
+  pilotDiagnostic: call('elpo:pilotDiagnostic'),
   dropped: call('elpo:dropped'),
   useFlowFolder: call('elpo:useFlowFolder'),
   // Path of a file dropped on the window (Electron 32: File.path is gone, webUtils replaces it).

@@ -1,6 +1,7 @@
 # Changements
 
 ## 0.6.0
+- Adaptation issue de la comparaison avec projetx : lecture AppleScript de tous les contrôles Qt et du champ `title`, libellés normalisés, reconnaissance de l'accueil sans exiger le titre Projets visible, recherche de la vignette par son nom, diagnostic JSON enregistrable après un échec. Les contrôles du bon projet et du démarrage de l'export restent obligatoires.
 - Correctif de pilotage en test : retour sur Accueil depuis le Studio IA, restauration de la géométrie du calibrage, confirmation du projet et du dialogue d'export par Accessibilité, arrêt du lot si l'étape échoue. Aucune commande d'export sur un projet non confirmé. Détection des exports remplaçant un fichier existant et erreur après 90 secondes sans fichier ni encodage confirmé.
 - Interface repensée : rail de navigation, **Plateau** en trois zones (chutier, visionneuse, inspecteur) avec la timeline toujours visible, et **Salle de rendu** séparée de la préparation du lot (vidéos en cours, en attente, à revoir, heure de fin estimée).
 - Aperçu vivant : après une première analyse, chaque réglage relance l’aperçu (lecture seule) et la visionneuse rejoue les mouvements (zoom, panoramiques, Ken Burns) avec le même calcul que l’écriture CapCut.
