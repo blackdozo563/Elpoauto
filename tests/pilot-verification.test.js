@@ -6,7 +6,7 @@ import os from 'node:os';
 import vm from 'node:vm';
 import { fixture } from './fixtures.js';
 import { CapcutPilot, snapshotExports, newExports } from '../lib/capcut-pilot.js';
-import { homeIsOpen, projectIsOpen, exportDialogIsOpen, controlPoint, exportIsRunning, exportTarget, targetMatches, EXPORT_BUTTON } from '../lib/capcut-ui.js';
+import { homeIsOpen, projectIsOpen, exportDialogIsOpen, controlPoint, exportIsRunning, exportTarget, targetMatches, EXPORT_BUTTON, draftTiles, pointOnDraft, uiSummary, draftTileFor, draftTitles } from '../lib/capcut-ui.js';
 import { CAPCUT_UI_SCRIPT } from '../lib/mac-automation.js';
 
 const node = (name, extra = {}) => ({ name, role: 'AXStaticText', ...extra });
@@ -31,7 +31,7 @@ function setup(options = {}) {
     readUi: async () => {
       if (options.unreadable) throw new Error('Accessibilité refusée');
       if (page === 'studio') return snapshot([node('Accueil', { role: 'AXButton', position: [20, 80], size: [40, 20] }), 'Studio de conceptions', 'Inspiration']);
-      if (page === 'home') return home;
+      if (page === 'home') return options.home || home;
       if (page === 'editor') return options.wrongProject ? snapshot(['Autre projet', 'Exporter', 'Médias']) : editor;
       return options.noDialog ? editor : (options.sheet || dialog);
     },
@@ -39,7 +39,9 @@ function setup(options = {}) {
       log.push(['click', point, double]);
       if (point.x === 1028 && point.y === 755 && !options.noFile) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO(1).mp4'), 'test video');
       if (point.x === homePoint.x && point.y === homePoint.y) page = 'home';
-      else if (point.x === tile.x && point.y === tile.y && !options.stuckHome) page = 'editor';
+      else if (point.x === tile.x && point.y === tile.y && !options.stuckHome && !options.home) page = 'editor';
+      else if (options.draftPoint && point.x === options.draftPoint.x && point.y === options.draftPoint.y) page = 'editor';
+      else if (options.home) page = 'studio';
     },
     shortcut: async () => { log.push('shortcut'); page = 'dialog'; },
     key: async key => {
@@ -134,6 +136,104 @@ test('pilote : la feuille d’export annonce un autre projet, aucun export envoy
     assert.equal(job.status, 'failed'); assert.match(job.error, /au lieu de « Test ELPO »/);
     assert.ok(!s.log.includes('return'));
     assert.ok(!s.log.filter(Array.isArray).some(v => v[0] === 'click' && v[1].x === 1028));
+  } finally { s.f.cleanup(); }
+});
+
+// Accueil CapCut 9 réel : vignettes HomePageDraft avec leur position (fenêtre 1280×720 en (80, 90)).
+const draft = (x, y) => ({ role: 'AXStaticText', name: '', description: 'HomePageDraft', position: [x, y], size: [174, 100] });
+const homeWith = drafts => ({ windows: [{ title: 'CapCut', frame: { x: 80, y: 90, width: 1280, height: 720 }, nodes: [
+  { role: 'AXStaticText', name: 'Accueil', description: 'Accueil', position: [100, 210], size: [80, 20] },
+  { role: 'AXStaticText', name: 'Studio de conceptions', description: 'Studio de conceptions', position: [100, 330], size: [160, 20] },
+  { role: 'AXStaticText', name: 'HomePageStartProjectName', description: 'HomePageStartProjectDesp', position: [250, 120], size: [1000, 130] },
+  ...drafts] }] });
+
+test('accueil CapCut 9 : la première vignette est la plus haute puis la plus à gauche, hors fenêtre ignorée', () => {
+  const ui = homeWith([draft(500, 600), draft(300, 600), draft(300, 600), draft(300, 900)]);
+  assert.deepEqual(draftTiles(ui), [{ x: 387, y: 650 }, { x: 587, y: 650 }]);
+  assert.deepEqual(draftTiles(homeWith([draft(300, 850), draft(500, 850)])), [], 'rangée « Projets » sous la partie visible');
+  assert.equal(pointOnDraft(homeWith([draft(300, 600)]), { x: 350, y: 640 }), true);
+  assert.equal(pointOnDraft(homeWith([draft(300, 600)]), { x: 180, y: 340 }), false, 'Studio de conceptions n’est pas une vignette');
+  assert.match(uiSummary(homeWith([draft(300, 600)])), /\[accueil\]/);
+  assert.match(uiSummary(snapshot(['Studio de conceptions', 'Inspiration'])), /page non reconnue/);
+});
+
+test('pilote : ouvre la vraie première vignette HomePageDraft au lieu du point calibré', async () => {
+  const s = setup({ home: homeWith([draft(500, 600), draft(300, 600)]), draftPoint: { x: 387, y: 650 } });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error);
+    const clicks = s.log.filter(Array.isArray).filter(v => v[0] === 'click');
+    assert.deepEqual(clicks[1], ['click', { x: 387, y: 650 }, true]);
+    assert.ok(!clicks.some(v => v[1].x === 200 && v[1].y === 250), 'point calibré non utilisé');
+  } finally { s.f.cleanup(); }
+});
+
+test('pilote : vignettes hors de vue et point calibré hors vignette, aucun clic à l’aveugle', async () => {
+  const s = setup({ home: homeWith([draft(300, 850), draft(500, 850)]) });
+  try {
+    const [job, pending] = await s.pilot.run([...s.projects, ...s.projects], { exportDir: s.exportDir });
+    assert.equal(job.status, 'failed'); assert.match(job.error, /rangée « Projets »/);
+    assert.equal(pending.status, 'cancelled');
+    assert.ok(!s.log.filter(Array.isArray).some(v => v[0] === 'click' && v[2] === true), 'aucun double-clic');
+    assert.ok(!s.log.includes('shortcut'));
+  } finally { s.f.cleanup(); }
+});
+
+// Parcours réel enregistré (capcut-parcours.sh), Accueil CapCut 9 dans une fenêtre 1424×798 en (8, 34).
+const st = (name, description, x, y, w, h) => ({ role: 'AXStaticText', name, description, position: [x - w / 2, y - h / 2], size: [w, h] });
+const REAL_FRAME = { x: 8, y: 34, width: 1424, height: 798 };
+const START = st('HomePageStartProjectName', 'HomePageStartProjectDesp', 834, 150, 174, 27);
+// Étape 1 : juste après le lancement, rangée « Projets » coupée par le bas, aucun titre exposé.
+const launchHome = { windows: [{ title: 'CapCut', frame: REAL_FRAME, nodes: [START,
+  ...[315, 461, 607, 753, 899, 1045, 1191].map(x => st('', 'HomePageDraft', x, 819, 134, 174))] }] };
+// Étape 2 : rangée visible, titres exposés ; CapCut donne au nœud « 0604 » le cadre de la vignette « 0920 (1) »
+// et omet la vignette 461 de la liste HomePageDraft.
+const T = n => `HomePageDraftTitle:${n}`;
+const scrolledHome = { windows: [{ title: 'CapCut', frame: REAL_FRAME, nodes: [START,
+  st('', 'HomePageDraft', 315, 548, 134, 174), st(T('TESTO'), T('TESTO'), 272, 620, 38, 14), st(T('TESTO'), T('TESTO'), 272, 620, 38, 14),
+  st(T('0604'), T('0604'), 415, 620, 31, 14), st(T('0604'), T('0604'), 607, 548, 134, 174),
+  st(T('0920 (1)'), T('0920 (1)'), 569, 620, 48, 14), st('', 'HomePageDraft', 753, 548, 134, 174),
+  st(T('0713'), T('0713'), 705, 620, 27, 14), st('', 'HomePageDraft', 315, 726, 134, 174),
+  st(T('0114'), T('0114'), 267, 798, 27, 14),
+] }] };
+
+test('accueil CapCut 9 réel : après lancement, la première vignette coupée est visée dans sa partie visible', () => {
+  assert.equal(homeIsOpen(launchHome), true);
+  assert.equal(draftTileFor(launchHome, 'TESTO'), undefined, 'aucun titre exposé au lancement');
+  const [first] = draftTiles(launchHome);
+  assert.deepEqual(first, { x: 315, y: 777 });
+  assert.ok(first.y < REAL_FRAME.y + REAL_FRAME.height, 'clic dans la fenêtre');
+});
+
+test('accueil CapCut 9 réel : vignette visée par le nom exact, sans se fier au cadre erroné de « 0604 »', () => {
+  assert.deepEqual(draftTileFor(scrolledHome, 'TESTO'), { x: 273, y: 543 });
+  const p0604 = draftTileFor(scrolledHome, '0604');
+  assert.ok(p0604.x > 394 && p0604.x < 528, 'dans la colonne de 0604 (vignette 461), pas sur 0920 (1)');
+  assert.ok(Math.abs(draftTileFor(scrolledHome, '0920 (1)').x - 607) < 67);
+  assert.equal(draftTileFor(scrolledHome, 'TEST'), null);
+  assert.deepEqual(draftTileFor(scrolledHome, '0114'), { x: 274, y: 721 }, 'deuxième rangée, visible');
+  assert.equal(draftTileFor(scrolledHome, '0114 (1)'), null, 'titre non exposé');
+  assert.deepEqual(draftTitles(scrolledHome), ['testo', '0604', '0920 (1)', '0713', '0114']);
+});
+
+test('pilote : ouvre la vignette du projet par son nom, même si elle n’est pas la première', async () => {
+  const home = { windows: [{ title: 'CapCut', frame: REAL_FRAME, nodes: [START,
+    st('', 'HomePageDraft', 315, 548, 134, 174), st(T('Autre'), T('Autre'), 272, 620, 38, 14),
+    st('', 'HomePageDraft', 461, 548, 134, 174), st(T('Test ELPO'), T('Test ELPO'), 418, 620, 38, 14)] }] };
+  const s = setup({ home, draftPoint: { x: 419, y: 543 } });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error);
+    assert.deepEqual(s.log.filter(Array.isArray).filter(v => v[0] === 'click')[1], ['click', { x: 419, y: 543 }, true]);
+  } finally { s.f.cleanup(); }
+});
+
+test('pilote : vignette du projet absente de l’accueil, aucun clic sur un autre projet', async () => {
+  const s = setup({ home: scrolledHome, draftPoint: { x: 273, y: 543 } });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'failed'); assert.match(job.error, /« Test ELPO » n’est pas visible.*testo, 0604/);
+    assert.ok(!s.log.filter(Array.isArray).some(v => v[0] === 'click' && v[2] === true), 'aucun double-clic');
   } finally { s.f.cleanup(); }
 });
 
