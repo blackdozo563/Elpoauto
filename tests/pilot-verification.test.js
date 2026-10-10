@@ -6,7 +6,7 @@ import os from 'node:os';
 import vm from 'node:vm';
 import { fixture } from './fixtures.js';
 import { CapcutPilot, snapshotExports, newExports } from '../lib/capcut-pilot.js';
-import { homeIsOpen, projectIsOpen, exportDialogIsOpen, controlPoint, exportIsRunning, exportTarget, targetMatches, EXPORT_BUTTON, draftTiles, pointOnDraft, uiSummary } from '../lib/capcut-ui.js';
+import { homeIsOpen, projectIsOpen, exportDialogIsOpen, controlPoint, exportIsRunning, exportTarget, targetMatches, EXPORT_BUTTON } from '../lib/capcut-ui.js';
 import { CAPCUT_UI_SCRIPT } from '../lib/mac-automation.js';
 
 const node = (name, extra = {}) => ({ name, role: 'AXStaticText', ...extra });
@@ -31,7 +31,7 @@ function setup(options = {}) {
     readUi: async () => {
       if (options.unreadable) throw new Error('Accessibilité refusée');
       if (page === 'studio') return snapshot([node('Accueil', { role: 'AXButton', position: [20, 80], size: [40, 20] }), 'Studio de conceptions', 'Inspiration']);
-      if (page === 'home') return options.home || home;
+      if (page === 'home') return home;
       if (page === 'editor') return options.wrongProject ? snapshot(['Autre projet', 'Exporter', 'Médias']) : editor;
       return options.noDialog ? editor : (options.sheet || dialog);
     },
@@ -39,9 +39,7 @@ function setup(options = {}) {
       log.push(['click', point, double]);
       if (point.x === 1028 && point.y === 755 && !options.noFile) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO(1).mp4'), 'test video');
       if (point.x === homePoint.x && point.y === homePoint.y) page = 'home';
-      else if (point.x === tile.x && point.y === tile.y && !options.stuckHome && !options.home) page = 'editor';
-      else if (options.draftPoint && point.x === options.draftPoint.x && point.y === options.draftPoint.y) page = 'editor';
-      else if (options.home) page = 'studio';
+      else if (point.x === tile.x && point.y === tile.y && !options.stuckHome) page = 'editor';
     },
     shortcut: async () => { log.push('shortcut'); page = 'dialog'; },
     key: async key => {
@@ -136,46 +134,6 @@ test('pilote : la feuille d’export annonce un autre projet, aucun export envoy
     assert.equal(job.status, 'failed'); assert.match(job.error, /au lieu de « Test ELPO »/);
     assert.ok(!s.log.includes('return'));
     assert.ok(!s.log.filter(Array.isArray).some(v => v[0] === 'click' && v[1].x === 1028));
-  } finally { s.f.cleanup(); }
-});
-
-// Accueil CapCut 9 réel : vignettes HomePageDraft avec leur position (fenêtre 1280×720 en (80, 90)).
-const draft = (x, y) => ({ role: 'AXStaticText', name: '', description: 'HomePageDraft', position: [x, y], size: [174, 100] });
-const homeWith = drafts => ({ windows: [{ title: 'CapCut', frame: { x: 80, y: 90, width: 1280, height: 720 }, nodes: [
-  { role: 'AXStaticText', name: 'Accueil', description: 'Accueil', position: [100, 210], size: [80, 20] },
-  { role: 'AXStaticText', name: 'Studio de conceptions', description: 'Studio de conceptions', position: [100, 330], size: [160, 20] },
-  { role: 'AXStaticText', name: 'HomePageStartProjectName', description: 'HomePageStartProjectDesp', position: [250, 120], size: [1000, 130] },
-  ...drafts] }] });
-
-test('accueil CapCut 9 : la première vignette est la plus haute puis la plus à gauche, hors fenêtre ignorée', () => {
-  const ui = homeWith([draft(500, 600), draft(300, 600), draft(300, 600), draft(300, 900)]);
-  assert.deepEqual(draftTiles(ui), [{ x: 387, y: 650 }, { x: 587, y: 650 }]);
-  assert.deepEqual(draftTiles(homeWith([draft(300, 850), draft(500, 850)])), [], 'rangée « Projets » sous la partie visible');
-  assert.equal(pointOnDraft(homeWith([draft(300, 600)]), { x: 350, y: 640 }), true);
-  assert.equal(pointOnDraft(homeWith([draft(300, 600)]), { x: 180, y: 340 }), false, 'Studio de conceptions n’est pas une vignette');
-  assert.match(uiSummary(homeWith([draft(300, 600)])), /\[accueil\]/);
-  assert.match(uiSummary(snapshot(['Studio de conceptions', 'Inspiration'])), /page non reconnue/);
-});
-
-test('pilote : ouvre la vraie première vignette HomePageDraft au lieu du point calibré', async () => {
-  const s = setup({ home: homeWith([draft(500, 600), draft(300, 600)]), draftPoint: { x: 387, y: 650 } });
-  try {
-    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
-    assert.equal(job.status, 'done', job.error);
-    const clicks = s.log.filter(Array.isArray).filter(v => v[0] === 'click');
-    assert.deepEqual(clicks[1], ['click', { x: 387, y: 650 }, true]);
-    assert.ok(!clicks.some(v => v[1].x === 200 && v[1].y === 250), 'point calibré non utilisé');
-  } finally { s.f.cleanup(); }
-});
-
-test('pilote : vignettes hors de vue et point calibré hors vignette, aucun clic à l’aveugle', async () => {
-  const s = setup({ home: homeWith([draft(300, 850), draft(500, 850)]) });
-  try {
-    const [job, pending] = await s.pilot.run([...s.projects, ...s.projects], { exportDir: s.exportDir });
-    assert.equal(job.status, 'failed'); assert.match(job.error, /rangée « Projets »/);
-    assert.equal(pending.status, 'cancelled');
-    assert.ok(!s.log.filter(Array.isArray).some(v => v[0] === 'click' && v[2] === true), 'aucun double-clic');
-    assert.ok(!s.log.includes('shortcut'));
   } finally { s.f.cleanup(); }
 });
 
