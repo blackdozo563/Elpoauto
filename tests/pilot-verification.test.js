@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import vm from 'node:vm';
 import { fixture } from './fixtures.js';
 import { CapcutPilot, snapshotExports, newExports } from '../lib/capcut-pilot.js';
-import { homeIsOpen, projectIsOpen, exportDialogIsOpen, controlPoint, exportIsRunning } from '../lib/capcut-ui.js';
+import { homeIsOpen, projectIsOpen, exportDialogIsOpen, controlPoint, exportIsRunning, exportTarget, targetMatches, EXPORT_BUTTON } from '../lib/capcut-ui.js';
 import { CAPCUT_UI_SCRIPT } from '../lib/mac-automation.js';
 
 const node = (name, extra = {}) => ({ name, role: 'AXStaticText', ...extra });
@@ -32,17 +33,18 @@ function setup(options = {}) {
       if (page === 'studio') return snapshot([node('Accueil', { role: 'AXButton', position: [20, 80], size: [40, 20] }), 'Studio de conceptions', 'Inspiration']);
       if (page === 'home') return home;
       if (page === 'editor') return options.wrongProject ? snapshot(['Autre projet', 'Exporter', 'Médias']) : editor;
-      return options.noDialog ? editor : dialog;
+      return options.noDialog ? editor : (options.sheet || dialog);
     },
     click: async (point, double) => {
       log.push(['click', point, double]);
+      if (point.x === 1028 && point.y === 755 && !options.noFile) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO(1).mp4'), 'test video');
       if (point.x === homePoint.x && point.y === homePoint.y) page = 'home';
       else if (point.x === tile.x && point.y === tile.y && !options.stuckHome) page = 'editor';
     },
     shortcut: async () => { log.push('shortcut'); page = 'dialog'; },
     key: async key => {
       log.push(key);
-      if (key === 'return' && !options.noFile) fs.writeFileSync(path.join(exportDir, 'Test ELPO.mp4'), 'test video');
+      if (key === 'return' && !options.noFile) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO.mp4'), 'test video');
     },
     playable: async () => true,
   };
@@ -76,6 +78,63 @@ test('interface CapCut 9 réelle : l’accueil est reconnu par ses identifiants 
   assert.equal(projectIsOpen(real, 'Test ELPO'), false);
   assert.equal(homeIsOpen(snapshot(['Accueil', 'Studio de conceptions', 'Inspiration'])), false);
   assert.equal(homeIsOpen({ windows: [...snapshot(['Studio de conceptions']).windows, ...real.windows] }), false);
+});
+
+// Relevé réel CapCut 9 (macOS, français) : éditeur ouvert sur TESTO, feuille d'export affichée,
+// bulle EditPilot (petite fenêtre sans titre) listée en premier.
+const ax = (description, extra = {}) => ({ role: 'AXStaticText', name: '', description, ...extra });
+const bubble = { title: '', frame: { x: 1185, y: 734, width: 183, height: 88 }, nodes: [{ role: 'AXWindow', name: '', description: 'dialogue' }] };
+const editorNodes = [
+  ax('MainWindowTitleBarExportBtn', { position: [1272, 97], size: [77, 22] }), ax('root_Multimédia'), ax('PlayerPlayBtn'),
+  ax('MainMultiTimelineLayout'), ax('MainTimeLineRoot'), { role: 'AXButton', name: '', description: 'Bouton de fermeture' },
+];
+const sheetNodes = target => [
+  { role: 'AXSheet', name: '', description: 'feuille' }, ax('ExportFileNameInput'), ax('ExportPathInput'),
+  ax(target, { name: target }), ax('ExportSharpnessInput'), ax('ExportFormatInput'),
+  { role: 'AXButton', name: 'automationcancel', description: '', position: [912, 741], size: [72, 28] },
+  { role: 'AXButton', name: 'ExportOkBtn', description: '', position: [992, 741], size: [72, 28] }, ax('ExportOkBtn'), ax('ExportDialog'),
+];
+const capcut = nodes => ({ windows: [bubble, { title: 'CapCut', frame: { x: 80, y: 90, width: 1280, height: 720 }, nodes }] });
+
+test('interface CapCut 9 réelle : éditeur et feuille d’export reconnus malgré la bulle EditPilot', () => {
+  const realEditor = capcut(editorNodes);
+  const realSheet = capcut([...editorNodes, ...sheetNodes('/Users/macbook/Desktop/TESTO(1).mp4')]);
+  assert.equal(homeIsOpen(realEditor), false);
+  assert.equal(projectIsOpen(realEditor, 'TESTO'), true);
+  assert.equal(exportDialogIsOpen(realEditor), false);
+  assert.equal(exportDialogIsOpen(realSheet), true);
+  assert.deepEqual(controlPoint(realSheet, EXPORT_BUTTON), { x: 1028, y: 755 });
+  assert.equal(exportTarget(realSheet), '/Users/macbook/Desktop/TESTO(1).mp4');
+  assert.equal(targetMatches('/Users/macbook/Desktop/TESTO(1).mp4', 'TESTO'), true);
+  assert.equal(targetMatches('/Users/macbook/Desktop/TESTO.mov', 'testo'), true);
+  assert.equal(targetMatches('/Users/macbook/Desktop/TESTO(1).mp4', 'TEST'), false);
+  assert.equal(targetMatches('/Users/macbook/Desktop/TESTO 2.mp4', 'TESTO'), false);
+  // La bulle seule ne doit jamais être prise pour la page pilotée.
+  assert.equal(projectIsOpen({ windows: [bubble] }, 'TESTO'), false);
+});
+
+test('pilote : la feuille d’export confirme le projet, clique ExportOkBtn et donne le vrai dossier de sortie', async () => {
+  const desktop = fs.mkdtempSync(path.join(os.tmpdir(), 'elpo-desktop-'));
+  const target = path.join(desktop, 'Test ELPO(1).mp4');
+  const s = setup({ sheet: { windows: [{ title: 'CapCut', nodes: [...editorNodes, ...sheetNodes(target), ax('Test ELPO')] }] }, writeDir: desktop });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error);
+    assert.equal(job.output, target);
+    assert.ok(s.log.filter(Array.isArray).some(v => v[0] === 'click' && v[1].x === 1028 && v[1].y === 755), 'clic sur ExportOkBtn');
+    assert.ok(!s.log.includes('return'));
+    assert.ok(s.pilot.log.some(l => /surveillance de ce dossier/.test(l.text)));
+  } finally { s.f.cleanup(); fs.rmSync(desktop, { recursive: true, force: true }); }
+});
+
+test('pilote : la feuille d’export annonce un autre projet, aucun export envoyé', async () => {
+  const s = setup({ sheet: { windows: [{ title: 'CapCut', nodes: [...editorNodes, ...sheetNodes('/tmp/Autre projet.mp4'), ax('Test ELPO')] }] } });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'failed'); assert.match(job.error, /au lieu de « Test ELPO »/);
+    assert.ok(!s.log.includes('return'));
+    assert.ok(!s.log.filter(Array.isArray).some(v => v[0] === 'click' && v[1].x === 1028));
+  } finally { s.f.cleanup(); }
 });
 
 test('interface CapCut : le bouton de l’éditeur ne suffit pas à confirmer le dialogue d’export', () => {
