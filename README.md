@@ -1,4 +1,4 @@
-# ElpoAiAutoCapcut 0.6.1 — studio d'automontage CapCut
+# ElpoAiAutoCapcut 0.6.2 — studio d'automontage CapCut
 
 Application Electron pour Mac Apple Silicon qui **construit des timelines CapCut** (images, vidéos, voix off, musique, mouvements, transitions, effets, filtres) et **exporte les vidéos en lot**. Elle travaille sur les fichiers de projet CapCut (`draft_info.json`, `draft_meta_info.json`, index global) avec aperçu, sauvegarde et vérification avant toute écriture.
 
@@ -38,7 +38,7 @@ Le DMG autonome utilise Electron 32.3.3 installé depuis npm. L'ancien paquet ZI
 
 ## Développement
 
-Node.js 22+ : `npm ci`, puis `npm test` (147 tests, dont un rendu FFmpeg réel et une forme d'onde réelle si FFmpeg est installé). Aucune dépendance npm d'exécution ; Electron et electron-builder sont des dépendances de développement verrouillées par package-lock.json. `npm start` lance Electron installé localement.
+Node.js 22+ : `npm ci`, puis `npm test` (150 tests, dont un rendu FFmpeg réel et une forme d'onde réelle si FFmpeg est installé). Aucune dépendance npm d'exécution ; Electron et electron-builder sont des dépendances de développement verrouillées par package-lock.json. `npm start` lance Electron installé localement.
 - `lib/engine.js` : analyse, plan, construction du draft (mouvements, transitions, effets, filtres, musique), lot.
 - `lib/render.js` + `lib/export-queue.js` : export ELPO (plan lu depuis le draft, commandes FFmpeg pures et testées, file).
 - `lib/capcut-pilot.js` + `lib/mac-automation.js` : pilotage de CapCut (séquence testable, actions macOS via osascript/CoreGraphics). `lib/capcut-ui.js` interprète les relevés d'accessibilité (accueil, éditeur, feuille d'export, vignettes de projets).

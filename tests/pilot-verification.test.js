@@ -25,7 +25,7 @@ function setup(options = {}) {
     accessibility: async () => true, isRunning: async () => open,
     assertClosed: () => assert.equal(open, false),
     launch: async () => { open = true; log.push('launch'); },
-    activate: async () => {}, quit: async () => { open = false; log.push('quit'); },
+    activate: async () => { log.push('activate'); }, quit: async () => { open = false; log.push('quit'); },
     restoreWindow: async value => { log.push(['restore', value]); },
     windowFrame: async () => options.badFrame ? { ...frame, width: 800 } : frame,
     readUi: async readOptions => {
@@ -33,6 +33,8 @@ function setup(options = {}) {
       if (page === 'studio') return snapshot([node('Accueil', { role: 'AXButton', position: [20, 80], size: [40, 20] }), 'Studio de conceptions', 'Inspiration']);
       if (page === 'home') return options.home || home;
       if (page === 'editor') return options.editorUi || (options.wrongProject ? snapshot(['Autre projet', 'Exporter', 'Médias']) : editor);
+      // Export accepté : plus de feuille, et pas forcément d’indicateur de progression lisible.
+      if (page === 'exporting') return options.exportingUi || snapshot(['CapCut', 'Médias']);
       // Une lecture partielle (délai atteint dans macOS) ne prouve rien : le pilote
       // doit relire au lieu de déclarer la feuille absente.
       if (options.partialReads && partialReads < options.partialReads) {
@@ -46,7 +48,9 @@ function setup(options = {}) {
     },
     click: async (point, double) => {
       log.push(['click', point, double]);
-      if (point.x === 1028 && point.y === 755 && !options.noFile) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO(1).mp4'), 'test video');
+      if (point.x === 1028 && point.y === 755 && !options.noFile && !options.exportNeedsReturn) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO(1).mp4'), 'test video');
+      // CapCut accepte l'export : la feuille laisse place à sa fenêtre de progression.
+      if (point.x === 1028 && point.y === 755 && options.sheetClosesOnExport) page = 'exporting';
       if (point.x === homePoint.x && point.y === homePoint.y) page = 'home';
       else if (point.x === tile.x && point.y === tile.y && !options.stuckHome && !options.home) page = 'editor';
       else if (options.draftPoint && point.x === options.draftPoint.x && point.y === options.draftPoint.y) page = 'editor';
@@ -60,7 +64,7 @@ function setup(options = {}) {
         const temp = path.join(exportDir, '.__capcut_export_temp_folder_1791601342__');
         fs.mkdirSync(temp); fs.writeFileSync(path.join(temp, '1fcfdfb9.mp4'), 'x'.repeat(1000));
         setTimeout(() => { fs.renameSync(path.join(temp, '1fcfdfb9.mp4'), path.join(exportDir, 'Test ELPO.mp4')); }, options.encodeFirst);
-      } else if (key === 'return' && !options.noFile) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO.mp4'), 'test video');
+      } else if (key === 'return' && (!options.noFile || options.exportNeedsReturn)) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO.mp4'), 'test video');
     },
     playable: async () => true,
   };
@@ -437,5 +441,45 @@ test('pilote : feuille jamais lisible, aucun Entrée et identifiants vus dans l�
     assert.match(job.error, /Contrôles lus :/);
     assert.equal(pending.status, 'cancelled');
     assert.ok(!s.log.includes('return')); assert.ok(!s.log.includes('quit'));
+  } finally { s.f.cleanup(); }
+});
+
+// ── Le clic qui démarre réellement l'export ──────────────────────────────────────
+test('pilote : CapCut est activé juste avant le clic sur « Exporter » de la feuille', async () => {
+  const s = setup({ sheetFor: sheetIn });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error);
+    const at = s.log.findIndex(v => Array.isArray(v) && v[0] === 'click' && v[1].x === 1028 && v[1].y === 755);
+    assert.ok(at > 0, 'clic sur ExportOkBtn');
+    assert.equal(s.log[at - 1], 'activate', 'activate() immédiatement avant le clic');
+    assert.ok(s.pilot.log.some(l => /Clic sur « Exporter » de la feuille en \(1028, 755\)/.test(l.text)));
+    assert.ok(s.pilot.log.some(l => /Fichier annoncé par CapCut :/.test(l.text)));
+  } finally { s.f.cleanup(); }
+});
+
+test('pilote : clic non reçu, la feuille reste ouverte et ELPO réessaie par Entrée', async () => {
+  const s = setup({ exportNeedsReturn: true, sheetFor: sheetIn });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error);
+    assert.ok(s.log.includes('return'), 'repli sur la touche Entrée');
+    assert.ok(s.pilot.log.some(l => /n’a pas été reçu/.test(l.text)));
+  } finally { s.f.cleanup(); }
+});
+
+test('pilote : la fermeture de la feuille confirme le démarrage, sans fichier ni progression', async () => {
+  // sheetIn expose le vrai ExportOkBtn : sans lui ELPO passerait par Entrée et le clic
+  // qui ferme la feuille n'aurait jamais lieu.
+  const s = setup({ noFile: true, sheetClosesOnExport: true, sheetFor: sheetIn });
+  try {
+    let observed = false;
+    s.pilot.on('update', jobs => {
+      if (jobs[0]?.stage === 'Export en cours dans CapCut · attente du fichier') { observed = true; s.pilot.stop(); }
+    });
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(observed, true, 'démarrage confirmé par la disparition de la feuille');
+    assert.equal(job.status, 'cancelled');
+    assert.ok(!s.log.includes('return'), 'le clic a été reçu : pas de second envoi');
   } finally { s.f.cleanup(); }
 });
