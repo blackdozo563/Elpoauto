@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import vm from 'node:vm';
 import { fixture } from './fixtures.js';
-import { CapcutPilot, snapshotExports, newExports } from '../lib/capcut-pilot.js';
+import { CapcutPilot, snapshotExports, newExports, encodingBytes } from '../lib/capcut-pilot.js';
 import { homeIsOpen, projectIsOpen, exportDialogIsOpen, controlPoint, exportIsRunning, exportTarget, targetMatches, EXPORT_BUTTON, draftTiles, pointOnDraft, uiSummary, draftTileFor, draftTitles } from '../lib/capcut-ui.js';
 import { CAPCUT_UI_SCRIPT } from '../lib/mac-automation.js';
 
@@ -46,7 +46,11 @@ function setup(options = {}) {
     shortcut: async () => { log.push('shortcut'); page = 'dialog'; },
     key: async key => {
       log.push(key);
-      if (key === 'return' && !options.noFile) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO.mp4'), 'test video');
+      if (key === 'return' && options.encodeFirst) {
+        const temp = path.join(exportDir, '.__capcut_export_temp_folder_1791601342__');
+        fs.mkdirSync(temp); fs.writeFileSync(path.join(temp, '1fcfdfb9.mp4'), 'x'.repeat(1000));
+        setTimeout(() => { fs.renameSync(path.join(temp, '1fcfdfb9.mp4'), path.join(exportDir, 'Test ELPO.mp4')); }, options.encodeFirst);
+      } else if (key === 'return' && !options.noFile) fs.writeFileSync(path.join(options.writeDir || exportDir, 'Test ELPO.mp4'), 'test video');
     },
     playable: async () => true,
   };
@@ -234,6 +238,26 @@ test('pilote : vignette du projet absente de l’accueil, aucun clic sur un autr
     const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
     assert.equal(job.status, 'failed'); assert.match(job.error, /« Test ELPO » n’est pas visible.*testo, 0604/);
     assert.ok(!s.log.filter(Array.isArray).some(v => v[0] === 'click' && v[2] === true), 'aucun double-clic');
+  } finally { s.f.cleanup(); }
+});
+
+test('export CapCut 9 réel : l’encodage dans le dossier caché du Bureau est suivi', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'elpo-encode-'));
+  try {
+    assert.equal(encodingBytes(dir, Date.now()), 0);
+    const temp = path.join(dir, '.__capcut_export_temp_folder_1791601342__'); fs.mkdirSync(temp);
+    fs.writeFileSync(path.join(temp, '1fcfdfb9-3603-4e80-ae36-a3b75fe024a5.mp4'), Buffer.alloc(4096));
+    assert.equal(encodingBytes(dir, Date.now()), 4096);
+    assert.deepEqual(newExports(dir, Date.now(), new Set()), [], 'le fichier temporaire n’est pas un export terminé');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('pilote : export long encodé dans le dossier caché, aucune fausse erreur de démarrage', async () => {
+  const s = setup({ encodeFirst: 2500 });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error);
+    assert.equal(path.basename(job.output), 'Test ELPO.mp4');
   } finally { s.f.cleanup(); }
 });
 
