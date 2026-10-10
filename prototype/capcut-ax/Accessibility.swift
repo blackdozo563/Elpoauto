@@ -61,7 +61,7 @@ final class NativeAX {
         let code = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
         report.read(["at": Evidence.timestamp(), "path": path, "attribute": attribute,
                      "code": Int(code.rawValue), "error": axErrorName(code), "ms": Date().timeIntervalSince(start) * 1000])
-        if [kAXChildrenAttribute, kAXWindowsAttribute, kAXSheetsAttribute, kAXRoleAttribute].contains(attribute),
+        if [kAXChildrenAttribute, kAXWindowsAttribute, kAXRoleAttribute].contains(attribute),
            [.cannotComplete, .invalidUIElement, .apiDisabled].contains(code) {
             throw PrototypeFailure.stopped("Lecture structurelle \(attribute) : \(axErrorName(code)), \(path).")
         }
@@ -141,13 +141,13 @@ final class NativeAX {
             report.phase("fenetre", "Fenêtre CapCut relevée", ["title": title, "rect": frame.map { rectJSON($0) as Any } ?? NSNull()])
             if let frame = frame, frame.width < 400 || frame.height < 300 { continue }
             if try string(window, kAXRoleAttribute, path) == kAXSheetRole { sheets.append(window); continue }
-            let direct = (try get(window, kAXSheetsAttribute, path)) as? [AXUIElement] ?? []
-            if !direct.isEmpty { sheets.append(contentsOf: direct); continue }
-            // Bounded fallback through AXChildren, never an inventory of the timeline.
+            // Native AXChildren is the supported public attribute. System Events'
+            // 'sheets' collection is not an exported native kAXSheetsAttribute.
+            // Stop at the modal branch, never inventory the editor's timeline.
             var queue = try children(window, path).map { ($0, 1) }, index = 0
             while index < queue.count && index < 120 {
                 let (child, depth) = queue[index]; index += 1
-                if try string(child, kAXRoleAttribute, "\(path)/child/\(index)") == kAXSheetRole { sheets.append(child); continue }
+                if try string(child, kAXRoleAttribute, "\(path)/child/\(index)") == kAXSheetRole { sheets.append(child); break }
                 if depth < 3 { queue.append(contentsOf: try children(child, path).map { ($0, depth + 1) }) }
             }
         }
