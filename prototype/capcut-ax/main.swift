@@ -12,7 +12,16 @@ if args.contains("--self-test") {
         let point = try validatedPoint(button: CGRect(x: 992, y: 741, width: 72, height: 28), sheet: sheet, screens: [screen])
         precondition(point == CGPoint(x: 1028, y: 755))
         do { _ = try validatedPoint(button: CGRect(x: 10, y: 10, width: 72, height: 28), sheet: sheet, screens: [screen]); fatalError("Point extérieur accepté") } catch {}
-        print("{\"checks\":[\"commande unique\",\"coordonnées Retina en points\",\"point extérieur refusé\"],\"functionalProof\":false,\"capcutExercised\":false}")
+        // Regression: the actual Mac report showed encoding at 85.5% after
+        // 120 seconds, while the former observer falsely reported no start.
+        for percent in ["77.9", "78.4", "79.4", "80.2", "80.8", "81.3", "82.3", "82.9", "83.5", "84.4", "84.9", "85.5", "100"] {
+            precondition(capcutExportPercent(role: kAXStaticTextRole, description: "ExportProgress:\(percent)%") == Double(percent))
+        }
+        for invalid in ["Exportation 85.5%", "ExportProgress:NaN%", "ExportProgress:101%", "ExportProgress:-1%", "ExportProgress:85.5% suite", "ExportProgress:85,5%"] {
+            precondition(capcutExportPercent(role: kAXStaticTextRole, description: invalid) == nil)
+        }
+        precondition(capcutExportPercent(role: kAXButtonRole, description: "ExportProgress:85.5%") == nil)
+        print("{\"checks\":[\"commande unique\",\"coordonnées Retina en points\",\"point extérieur refusé\",\"ExportProgress réel reconnu\",\"progression invalide refusée\"],\"functionalProof\":false,\"capcutExercised\":false}")
         exit(0)
     } catch { fputs("\(error)\n", stderr); exit(1) }
 }
@@ -83,7 +92,7 @@ final class PrototypeApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let url = directory.appendingPathComponent("capcut-ax-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8)).json")
             let report = Evidence(url: url)
             report.update = { [weak self] message in DispatchQueue.main.async { self?.status.stringValue = message } }
-            guard report.save() else { throw PrototypeFailure.stopped("Le rapport ne peut pas être enregistré sur le Bureau.") }
+            guard report.save() else { throw PrototypeFailure.stopped("Le rapport ne peut pas être enregistré dans le dossier Rapports du prototype.") }
             reportURL = url; reveal.isEnabled = true
             let cancel = Cancellation(); cancellation = cancel
             let runner = PrototypeRunner(report: report, cancel: cancel, ledger: ledger, expectedName: expected.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), allowCoordinates: fallback.state == .on, authorizedFolder: authorizedFolder)

@@ -23,7 +23,7 @@ Laisse le Mac éveillé et déverrouillé pendant le test. La validation décode
 ## Lecture du rapport
 
 - `commandAttempted` : une tentative a consommé l’autorisation unique ; `commandResult` distingue AXPress accepté, retour incertain ou événements de clic postés.
-- `encodingDetected` : activité observée dans les fichiers temporaires CapCut, progression native modifiée ou nouveau fichier final. Le rapport indique la source exacte, notamment quand l’encodage est déduit du fichier écrit.
+- `encodingDetected` : activité observée dans les fichiers temporaires CapCut, progression native modifiée ou nouveau fichier final. Le rapport indique la source exacte, notamment quand l’encodage est déduit du fichier écrit. Sur CapCut 9.3.0, l’identifiant natif `ExportProgress:<pourcentage>%` relevé dans `AXDescription` d’un `AXStaticText` confirme également l’encodage ; `encodingPercent` suit son évolution. Un encodage ainsi confirmé continue au-delà des 120 secondes, même si le fichier final n’existe pas encore.
 - `exportFinished` : maximum atteint après une progression inférieure, ou fin établie par un fichier final stable et entièrement décodé. `capcutUICompletionObserved` distingue ces deux preuves.
 - `mp4Validated` : fichier nouveau ou modifié depuis la commande, atoms MP4 complets, vidéo lisible, durée positive, pistes vidéo et audio entièrement décodées, fichier inchangé pendant la validation.
 - `functionalProof: true` et `status: export_reel_valide` : tous les contrôles de l’export réel ont réussi. **Les contrôles CI ne positionnent jamais cette preuve à true.**

@@ -48,6 +48,16 @@ struct AXSnapshot {
     var json: [String: Any] { ["at": Evidence.timestamp(), "complete": complete, "ms": ms, "nodes": nodes.map { $0.json }] }
 }
 
+// Exact AXDescription recorded on CapCut 9.3.0 during a real export. This
+// machine identifier is not the localized text shown on screen.
+func capcutExportPercent(role: String, description: String) -> Double? {
+    guard role == kAXStaticTextRole,
+          description.range(of: "^ExportProgress:[0-9]+(?:\\.[0-9]+)?%$", options: .regularExpression) != nil,
+          let percent = Double(description.dropFirst("ExportProgress:".count).dropLast()),
+          percent.isFinite, (0...100).contains(percent) else { return nil }
+    return percent
+}
+
 final class NativeAX {
     let report: Evidence
     let cancel: Cancellation

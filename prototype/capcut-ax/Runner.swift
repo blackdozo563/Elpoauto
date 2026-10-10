@@ -151,6 +151,8 @@ final class PrototypeRunner {
         }
 
         var started = false, progressBelowMaximum = false, uiFinished = false
+        var lastNativePercent: Double?
+        var completionSource = "AXProgressIndicator"
         var stableStamp: FileStamp?, stableSince = Date()
         let deadline = sentAt.addingTimeInterval(7200)
         while Date() < deadline {
@@ -163,6 +165,21 @@ final class PrototypeRunner {
                 if stamp != tempPrevious[file] { encodingEvidence = ["source": "fichier_temporaire_CapCut", "file": file, "stamp": stamp.json] }
             }
             tempPrevious = temps
+            let nativePercents = Set(current.nodes.compactMap {
+                capcutExportPercent(role: $0.role, description: $0.description)
+            })
+            // A single unambiguous, positive reading proves encoding even when
+            // CapCut keeps its temporary MP4 elsewhere until finalization.
+            if nativePercents.count == 1, let percent = nativePercents.first, percent > 0 {
+                encodingEvidence = ["source": "ExportProgress", "attribute": "AXDescription", "percent": percent]
+                if percent < 100 { progressBelowMaximum = true }
+                if percent == 100 && progressBelowMaximum { uiFinished = true; completionSource = "ExportProgress" }
+                if percent != lastNativePercent {
+                    report.set("encodingPercent", percent)
+                    report.phase("progression_encodage", "Encodage CapCut : \(percent) %", encodingEvidence!)
+                    lastNativePercent = percent
+                }
+            }
             for n in current.nodes where n.role == kAXProgressIndicatorRole {
                 if let v = n.number, v.isFinite, v > 0, barsBefore[n.path] != v {
                     encodingEvidence = ["source": "AXProgressIndicator", "path": n.path, "value": v, "maximum": n.maximum.map { $0 as Any } ?? NSNull()]
@@ -190,7 +207,7 @@ final class PrototypeRunner {
             }
             if uiFinished && !(reportFinishedFlag) {
                 reportFinishedFlag = true; report.set("exportFinished", true)
-                report.phase("export_termine", "La progression native a atteint son maximum après une valeur inférieure", ["source": "AXProgressIndicator"])
+                report.phase("export_termine", "La progression native a atteint son maximum après une valeur inférieure", ["source": completionSource])
             }
             if let file = finals.first, let stamp = FileStamp.read(file) {
                 if stamp != stableStamp { stableStamp = stamp; stableSince = Date() }
