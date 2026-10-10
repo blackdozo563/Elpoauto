@@ -274,6 +274,7 @@ test('lecture JXA : collecte des fenêtres CapCut et exclusion des éléments in
   const element = (name, children = [], visible = true) => ({ name: () => name, role: () => 'AXStaticText', description: () => '', value: () => name,
     position: () => [20, 80], size: () => [40, 20], enabled: () => true, visible: () => visible, uiElements: () => children });
   const window = element('CapCut', [element('Accueil'), element('Invisible', [], false)]);
+  window.size = () => [640, 480];
   const ui = JSON.parse(vm.runInNewContext(CAPCUT_UI_SCRIPT, { Application: () => ({ processes: { byName: name => {
     assert.equal(name, 'CapCut'); return { windows: () => [window] };
   } } }) }));
