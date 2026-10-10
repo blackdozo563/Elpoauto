@@ -1,4 +1,4 @@
-# ElpoAiAutoCapcut 0.6.3 — studio d'automontage CapCut
+# ElpoAiAutoCapcut 0.6.4 — studio d'automontage CapCut
 
 Application Electron pour Mac Apple Silicon qui **construit des timelines CapCut** (images, vidéos, voix off, musique, mouvements, transitions, effets, filtres) et **exporte les vidéos en lot**. Elle travaille sur les fichiers de projet CapCut (`draft_info.json`, `draft_meta_info.json`, index global) avec aperçu, sauvegarde et vérification avant toute écriture.
 
