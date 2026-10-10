@@ -76,17 +76,19 @@ func validateMedia(_ url: URL, cancel: Cancellation, timeout: Double = 1800) thr
         while !active.isEmpty {
             try cancel.check()
             guard Date().timeIntervalSince(start) < timeout else { throw PrototypeFailure.stopped("Délai du décodage complet dépassé.") }
+            var invalidSample = false
             autoreleasepool {
                 for i in Array(active) {
                     guard let sample = outputs[i].copyNextSampleBuffer() else { active.remove(i); continue }
-                    if CMSampleBufferIsValid(sample) {
+                    if CMSampleBufferIsValid(sample) && (tracks[i].mediaType != .video || CMSampleBufferGetImageBuffer(sample) != nil) {
                         counts[i] += 1
                         let t = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
                         let d = CMTimeGetSeconds(CMSampleBufferGetDuration(sample))
                         if t.isFinite { ends[i] = max(ends[i], t + (d.isFinite && d > 0 ? d : 0)) }
-                    }
+                    } else { invalidSample = true }
                 }
             }
+            if invalidSample { throw PrototypeFailure.stopped("Un échantillon décodé est invalide ; MP4 refusé.") }
         }
     } catch { reader.cancelReading(); throw error }
     guard reader.status == .completed, counts.allSatisfy({ $0 > 0 }), ends[0] >= duration - 0.5 else {

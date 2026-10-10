@@ -30,7 +30,8 @@ final class Evidence {
                   "functionalProof": false, "status": "en_cours", "commandAttempted": false,
                   "encodingDetected": false, "exportFinished": false, "mp4Validated": false,
                   "environment": ["os": ProcessInfo.processInfo.operatingSystemVersionString,
-                                  "architecture": "arm64", "targetCapCut": "9.3.0", "language": "fr"]]
+                                  "architecture": "arm64", "targetCapCut": "9.3.0", "targetLanguage": "fr",
+                                  "systemLocale": Locale.current.identifier, "preferredLanguages": Locale.preferredLanguages]]
     }
     static func timestamp() -> String { ISO8601DateFormatter().string(from: Date()) }
     func set(_ key: String, _ value: Any) { fields[key] = value }

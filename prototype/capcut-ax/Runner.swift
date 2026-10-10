@@ -114,7 +114,9 @@ final class PrototypeRunner {
                 for _ in 0..<8 {
                     guard let current = hit else { break }
                     if CFEqual(current, button.element) { belongsToButton = true; break }
-                    hit = (try ax.get(current, kAXParentAttribute, "coordinateHitTest")) as! AXUIElement?
+                    guard let parent = try ax.get(current, kAXParentAttribute, "coordinateHitTest"),
+                          CFGetTypeID(parent) == AXUIElementGetTypeID() else { hit = nil; break }
+                    hit = (parent as! AXUIElement)
                 }
             }
             guard belongsToButton else { throw PrototypeFailure.stopped("Le contrôle situé sous les coordonnées n’est pas ExportOkBtn ; clic interdit.") }
