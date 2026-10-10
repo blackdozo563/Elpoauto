@@ -62,6 +62,22 @@ test('interface CapCut : la présence du projet sur l’accueil ne confirme pas 
   assert.equal(projectIsOpen({ windows: [...snapshot(['Studio de conceptions']).windows, ...editor.windows] }, 'Test ELPO'), false);
 });
 
+test('interface CapCut 9 réelle : l’accueil est reconnu par ses identifiants d’automatisation', () => {
+  // Snapshot relevé sur CapCut 9 (macOS, français), accueil ouvert, 7 projets.
+  const text = (name, description) => ({ role: 'AXStaticText', name, description });
+  const real = { windows: [{ title: 'CapCut', nodes: [
+    text('', 'AccountLogoutBtn'), text('Accueil', 'Accueil'), text('Studio de vidéos', 'Studio de vidéos'),
+    text('Studio de conceptions', 'Studio de conceptions'), text('Bibliothèque', 'Bibliothèque'), text('Espaces', 'Espaces'),
+    text('HomePageStartProjectName', 'HomePageStartProjectDesp'),
+    { role: 'AXButton', name: 'automationrecycleBinBtnSmall', description: '' },
+    ...Array.from({ length: 7 }, () => text('', 'HomePageDraft')),
+  ] }] };
+  assert.equal(homeIsOpen(real), true);
+  assert.equal(projectIsOpen(real, 'Test ELPO'), false);
+  assert.equal(homeIsOpen(snapshot(['Accueil', 'Studio de conceptions', 'Inspiration'])), false);
+  assert.equal(homeIsOpen({ windows: [...snapshot(['Studio de conceptions']).windows, ...real.windows] }), false);
+});
+
 test('interface CapCut : le bouton de l’éditeur ne suffit pas à confirmer le dialogue d’export', () => {
   assert.equal(exportDialogIsOpen(editor), false);
   assert.equal(exportDialogIsOpen(dialog), true);
