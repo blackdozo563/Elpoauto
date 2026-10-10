@@ -1,6 +1,9 @@
 # Changements
 
 ## 0.6.0
+- CapCut 9 : accueil et éditeur reconnus par leurs identifiants d’automatisation, feuille d’export `ExportDialog` / `ExportOkBtn`, bulle EditPilot ignorée et géométrie appliquée à la plus grande fenêtre. Nom du projet vérifié via le fichier annoncé, clic sur le bouton réel et surveillance du dossier de sortie réel.
+- Sécurité du pilotage : un éditeur reconnu seulement par ses identifiants ne suffit pas à confirmer le projet ; si le chemin de sortie est absent, aucun export n’est lancé et le lot est interrompu. Les deux commits du patch fourni sont conservés ; le correctif expérimental issu de projetx est annulé par un commit de réversion, sans réécriture d’historique. Validation : 119 tests après le patch, puis 120 avec ce cas supplémentaire.
+- À vérifier sur Mac : identifiants de progression et de fin d’export encore inconnus. Aucun identifiant supposé ajouté ; détection de progression historique conservée, fin par Échap puis fermeture de CapCut. Le cycle fermeture → mise en tête du projet → relancement est conservé.
 - Correctif de pilotage en test : retour sur Accueil depuis le Studio IA, restauration de la géométrie du calibrage, confirmation du projet et du dialogue d'export par Accessibilité, arrêt du lot si l'étape échoue. Aucune commande d'export sur un projet non confirmé. Détection des exports remplaçant un fichier existant et erreur après 90 secondes sans fichier ni encodage confirmé.
 - Interface repensée : rail de navigation, **Plateau** en trois zones (chutier, visionneuse, inspecteur) avec la timeline toujours visible, et **Salle de rendu** séparée de la préparation du lot (vidéos en cours, en attente, à revoir, heure de fin estimée).
 - Aperçu vivant : après une première analyse, chaque réglage relance l’aperçu (lecture seule) et la visionneuse rejoue les mouvements (zoom, panoramiques, Ken Burns) avec le même calcul que l’écriture CapCut.
