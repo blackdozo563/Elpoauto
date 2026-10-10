@@ -1,6 +1,8 @@
 # Relever l’échec du bouton Exporter dans la 0.6.4
 
-Ce build ajoute un relevé dans l’application. Il ne corrige pas encore le parcours d’export.
+Le premier build de diagnostic a permis de relever le défaut : la feuille est présente, mais le lecteur parcourt l’éditeur avant ses descendants. Le build `ElpoAiAutoCapcut-0.6.4-correctif-export-arm64.dmg` corrige ce parcours. Son fonctionnement dans CapCut doit encore être validé sur le Mac concerné.
+
+Pour valider ce correctif, installe cette copie dans Applications et teste TESTO seul. Si le rendu ne démarre pas, arrête le lot, laisse la feuille ouverte et utilise le bouton de diagnostic ci-dessous. Le nouveau relevé indique `mode: correctif-export-0.6.4` et expose les compteurs `modalOnly` et `modalChildren`.
 
 1. Installe le DMG nommé `ElpoAiAutoCapcut-0.6.4-diagnostic-arm64.dmg` dans Applications, puis ouvre cette copie.
 2. Arrête tout lot dans ELPO. Dans CapCut, ouvre manuellement TESTO et sa fenêtre d’export. Laisse le bouton Exporter affiché, sans lancer le rendu.

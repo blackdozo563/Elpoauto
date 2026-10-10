@@ -48,6 +48,7 @@ test('progression : une barre disparue n’est conclue qu’après deux lectures
   const t = exportTracker(win([zoom]));
   t.update(win([zoom, bar(80, 100)]));
   assert.equal(t.update({ ...win([zoom]), timedOut: true }).done, null, 'lecture interrompue : rien n’est conclu');
+  assert.equal(t.update({ ...win([zoom]), truncated: true }).done, null, 'limite de contrôles atteinte : rien n’est conclu');
   assert.equal(t.update(win([zoom])).done, null);
   assert.equal(t.update(win([zoom])).done, 'progression disparue');
 });

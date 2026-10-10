@@ -1,5 +1,11 @@
 # Changements
 
+## Correctif d’export à valider sur Mac (basé sur la 0.6.4)
+- Relevé réel du 10 octobre : Accessibilité autorisée, feuille AXSheet présente, mais aucune de ses commandes atteinte après 25 secondes et 75 contrôles lus dans l’éditeur. Placer la feuille en tête d’un parcours en largeur ne donnait pas la priorité à ses descendants.
+- Quand une feuille modale est trouvée, sa branche est parcourue seule, sans les panneaux de l’éditeur et sans le plafond par panneau. Le budget global et le délai restent actifs. La lecture des détails conserve un budget de 25 secondes même si la sonde a confirmé la présence de la feuille.
+- Une lecture partielle sans bouton final ne déclenche plus de clic ni de touche Entrée. Une limite de contrôles ne prouve plus la disparition du bouton ou de la progression.
+- Test de régression utilisant la structure minimale du relevé réel, avec descendants reconstruits pour reproduire le défaut du parcours. L’export réel reste à valider sur le Mac concerné.
+
 ## Diagnostic de la 0.6.4 (branche dédiée, sans nouvelle release)
 - Dans Réglages → Pilotage de CapCut, « Enregistrer le diagnostic CapCut » relève l’interface avec les trois profondeurs de lecture de la 0.6.4. Le JSON conserve les contrôles bruts, les lectures partielles ou en erreur, les coordonnées du bouton final, le chemin de sortie, le calibrage et le journal.
 - Lecture depuis l’application installée, avec son contexte d’autorisations macOS. Aucun clic, raccourci, déplacement de fenêtre ou lancement d’export n’est effectué ; le fichier est enregistré localement à l’emplacement choisi.

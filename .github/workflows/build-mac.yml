@@ -57,5 +57,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp dist/ElpoAiAutoCapcut-0.6.4-arm64.dmg dist/ElpoAiAutoCapcut-0.6.4-diagnostic-arm64.dmg
-          gh release upload v0.6.4 dist/ElpoAiAutoCapcut-0.6.4-diagnostic-arm64.dmg --repo "$GITHUB_REPOSITORY"
+          cp dist/ElpoAiAutoCapcut-0.6.4-arm64.dmg dist/ElpoAiAutoCapcut-0.6.4-correctif-export-arm64.dmg
+          gh release upload v0.6.4 dist/ElpoAiAutoCapcut-0.6.4-correctif-export-arm64.dmg --repo "$GITHUB_REPOSITORY"

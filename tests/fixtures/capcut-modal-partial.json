@@ -1,0 +1,57 @@
+{
+  "at": "2026-10-10T20:28:49.385Z",
+  "readMs": 25255,
+  "ui": {
+    "truncated": true,
+    "timedOut": true,
+    "found": false,
+    "nodesRead": 75,
+    "pruned": 0,
+    "cappedBranches": 0,
+    "windows": [
+      {
+        "title": "CapCut",
+        "frame": {
+          "x": 80,
+          "y": 90,
+          "width": 1280,
+          "height": 720
+        },
+        "nodes": [
+          {
+            "role": "AXWindow",
+            "name": "CapCut",
+            "description": "fenêtre standard",
+            "value": null,
+            "enabled": null,
+            "visible": true,
+            "position": [
+              80,
+              90
+            ],
+            "size": [
+              1280,
+              720
+            ]
+          },
+          {
+            "role": "AXSheet",
+            "name": null,
+            "description": "feuille",
+            "value": null,
+            "enabled": null,
+            "visible": true,
+            "position": [
+              360,
+              126
+            ],
+            "size": [
+              720,
+              695
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

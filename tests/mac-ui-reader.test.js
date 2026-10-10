@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import fs from 'node:fs';
 import { CAPCUT_UI_SCRIPT, capcutUiScript, automationFailure } from '../lib/mac-automation.js';
 import { editorIsOpen, exportDialogIsOpen, exportDialogWindow, exportOkPoint, exportTarget, uiIdentifiers, uiSummary } from '../lib/capcut-ui.js';
 import { CapcutPilot } from '../lib/capcut-pilot.js';
@@ -154,12 +155,11 @@ test('lecture macOS : feuille enfant AXSheet derrière un chutier de 400 médias
   assert.equal(exportTarget(ui), EXPORT_TARGET);
 });
 
-test('lecture macOS : la timeline n’est pas descendue, les panneaux sont limités séparément', () => {
+test('lecture macOS : une feuille modale exclut tous les panneaux de l’éditeur', () => {
   const { ui } = readEditor(CAPCUT_UI_SCRIPT, { sheetVia: 'sheets' });
-  assert.ok(ui.pruned >= 1, 'MainTimeLineRoot exclu du parcours');
-  assert.ok(ui.nodesRead < 150, `budget de lecture : ${ui.nodesRead} contrôles`);
-  // Le panneau de médias est plafonné sans empêcher la feuille d’être lue.
-  assert.ok(ui.nodesRead >= 50);
+  assert.equal(ui.modalOnly, true);
+  assert.ok(ui.nodesRead < 20, `budget de lecture : ${ui.nodesRead} contrôles`);
+  assert.ok(!uiIdentifiers(ui, 100).includes('mainwindowtitlebarexportbtn'));
 });
 
 test('lecture macOS : la sonde s’arrête au premier identifiant de la feuille', () => {
@@ -185,7 +185,47 @@ test('interface CapCut : la feuille est cherchée dans toutes les fenêtres, pas
 test('diagnostic macOS : les identifiants vus sont listés pour un échec', () => {
   const { ui } = readEditor(capcutUiScript({ stop: ['identifiant-inexistant'], deadlineMs: 400, maxNodes: 40, branchNodes: 12 }), { sheetVia: 'child' });
   const ids = uiIdentifiers(ui);
-  assert.ok(ids.includes('mainwindowtitlebarexportbtn'), ids.join(', '));
+  assert.ok(ids.includes('feuille'), ids.join(', '));
   assert.ok(ids.length <= 24);
   assert.ok(uiIdentifiers({ windows: [] }).length === 0);
+});
+
+test('relevé du 10 octobre : les descendants de la feuille passent avant les voisins de l’éditeur', () => {
+  // The actual capture contains AXSheet but no descendants after 25 s / 75 nodes.
+  // It is a flat partial snapshot, not a complete tree: descendant fixtures below
+  // reproduce the queue defect using previously known CapCut identifiers.
+  const observed = JSON.parse(fs.readFileSync(new URL('./fixtures/capcut-modal-partial.json', import.meta.url)));
+  assert.equal(observed.ui.timedOut, true);
+  assert.equal(observed.ui.nodesRead, 75);
+  assert.equal(exportDialogIsOpen(observed.ui), false);
+  const [root, modal] = observed.ui.windows[0].nodes;
+  assert.equal(modal.role, 'AXSheet');
+  const clk = fakeClock();
+  const fields = Array.from({ length: 65 }, () => ax('', '', [], {}, clk));
+  fields.push(ax('ExportOkBtn', '', [], { role: 'AXButton', position: [992, 741], size: [72, 28] }, clk));
+  fields.push(ax('', 'ExportPathInput', [], { role: 'AXTextField', value: EXPORT_TARGET }, clk));
+  const sheet = ax(modal.name, modal.description, fields, modal, clk);
+  const editor = ax('', 'root_Multimédia', [], {}, clk);
+  editor.properties = () => assert.fail('un panneau de l’éditeur a été lu avant les descendants de la feuille');
+  const w = axWindow(root.name, [sheet, ...Array(75).fill(editor)], null, observed.ui.windows[0].frame, clk);
+  const ui = JSON.parse(vm.runInNewContext(capcutUiScript({ deadlineMs: 25000, branchNodes: 20 }), {
+    Application: () => ({ processes: { byName: () => ({ windows: () => [w] }) } }), Date: clk,
+  }));
+  assert.equal(ui.modalOnly, true);
+  assert.equal(ui.modalChildren, 67);
+  assert.equal(ui.timedOut, false);
+  assert.equal(ui.truncated, false);
+  assert.deepEqual(exportOkPoint(ui), { x: 1028, y: 755 });
+  assert.equal(exportTarget(ui), EXPORT_TARGET);
+});
+
+test('pilote : une limite de contrôles ne confirme pas la disparition du bouton final', async () => {
+  const f = fixture();
+  try {
+    const partial = { windows: [{ title: 'CapCut', frame: editorFrame, nodes: [
+      { role: 'AXTextField', description: 'ExportPathInput', value: EXPORT_TARGET },
+    ] }], timedOut: false, truncated: true };
+    const pilot = new CapcutPilot({ root: f.root, actions: { readUi: async () => partial } });
+    assert.equal(await pilot.exportAccepted(() => null, undefined, 1), 'incertain');
+  } finally { f.cleanup(); }
 });

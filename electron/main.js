@@ -412,7 +412,7 @@ else {
         const actions = macActions();
         if (!(await actions.isRunning())) throw new Error('Ouvre CapCut sur sa fenêtre d’export avant le diagnostic.');
         const report = await captureCapcutDiagnostic(actions, {
-          version: app.getVersion(), mode: 'diagnostic-0.6.4', platform: process.platform,
+          version: app.getVersion(), mode: 'correctif-export-0.6.4', platform: process.platform,
           arch: process.arch, versions: process.versions,
           accessibility: systemPreferences.isTrustedAccessibilityClient(false),
           calibration: { exportButton: settings.pilot.exportButton, frames: settings.pilot.frames },
