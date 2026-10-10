@@ -118,10 +118,7 @@ function makePilot() {
   // No pilot until a CapCut projects folder is open (FFmpeg can be detected before that).
   if (!initialized) return;
   const base = macActions({ ffprobe: tool?.ffprobe, trusted: () => !mac || systemPreferences.isTrustedAccessibilityClient(false) });
-  const actions = { ...base,
-    click: (point, double) => { automated = { x: point.x, y: point.y, at: Date.now() }; return base.click(point, double); },
-    scrollAt: (point, lines) => { automated = { x: point.x, y: point.y, at: Date.now() }; return base.scrollAt(point, lines); },
-  };
+  const actions = { ...base, click: (point, double) => { automated = { x: point.x, y: point.y, at: Date.now() }; return base.click(point, double); } };
   pilot = new CapcutPilot({ root, backupDir: path.join(app.getPath('userData'), 'backups'), settings: settings.pilot, actions });
   pilot.on('update', jobs => { send('pilot', jobs); dock(); pilotHud(jobs); });
   pilot.on('log', line => send('pilotLog', line));
@@ -405,13 +402,6 @@ else {
       return ok(settings.pilot);
     });
     register('elpo:pilotAccess', async () => ok(!mac || systemPreferences.isTrustedAccessibilityClient(true)));
-    register('elpo:pilotDiagnostic', async () => {
-      if (!mac) throw new Error('Le diagnostic CapCut nécessite macOS.');
-      if (pilotRunning()) throw new Error('Arrête le pilotage avant de lire le diagnostic.');
-      const actions = macActions();
-      if (!(await actions.isRunning())) throw new Error('Ouvre CapCut sur la page à diagnostiquer.');
-      return ok({ version: app.getVersion(), capturedAt: new Date().toISOString(), ui: await actions.readUi() });
-    });
     let calibrating = false;
     register('elpo:pilotCalibrate', async target => {
       if (!['home', 'tile', 'exportButton'].includes(target)) throw new Error('Cible inconnue.');

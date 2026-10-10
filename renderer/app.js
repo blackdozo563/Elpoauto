@@ -981,10 +981,6 @@ async function savePilot(extra = {}) {
   renderSettings(); renderPilotState();
 }
 $('pilotSave').onclick = () => task(async () => { await savePilot(); notice('Réglages du pilotage enregistrés.'); });
-$('pilotDiagnostic').onclick = () => task(async () => {
-  const data = await unwrap(api.pilotDiagnostic());
-  await unwrap(api.export('capcut-diagnostic.json', JSON.stringify(data, null, 2)));
-});
 $('clearExportPoint').onclick = () => task(() => savePilot({ exportButton: null }));
 $('chooseCapcutDir').onclick = () => task(async () => { const dir = await unwrap(api.chooseDir({ purpose: 'capcut' })); if (dir) await savePilot({ exportDir: dir }); });
 $('pilotAccess').onclick = () => task(async () => { const okay = await unwrap(api.pilotAccess()); pilotAccessOk = okay; renderPilotState(); $('accessState').textContent = okay ? 'Accessibilité autorisée' : 'Accessibilité à autoriser'; $('accessState').className = `pill ${okay ? 'green' : 'red'}`; if (!okay) notice('Coche ElpoAiAutoCapcut dans Réglages Système → Confidentialité et sécurité → Accessibilité, puis réessaie.'); });
