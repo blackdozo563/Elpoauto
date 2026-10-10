@@ -59,6 +59,7 @@ test('interface CapCut : la présence du projet sur l’accueil ne confirme pas 
   assert.equal(projectIsOpen(snapshot(['Test ELPO 2', 'Exporter']), 'Test ELPO'), false);
   assert.equal(projectIsOpen(snapshot(['Exporter'], 'CapCut - Test ELPO'), 'Test ELPO'), true);
   assert.equal(projectIsOpen(snapshot(['Test ELPO', 'Inspiration', 'Créer un projet']), 'Test ELPO'), false);
+  assert.equal(projectIsOpen({ windows: [...snapshot(['Studio de conceptions']).windows, ...editor.windows] }, 'Test ELPO'), false);
 });
 
 test('interface CapCut : le bouton de l’éditeur ne suffit pas à confirmer le dialogue d’export', () => {
