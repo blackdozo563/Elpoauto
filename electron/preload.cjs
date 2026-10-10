@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('elpo', {
   reveal: call('elpo:reveal'),
   pilotSettings: call('elpo:pilotSettings'),
   pilotAccess: call('elpo:pilotAccess'),
+  pilotDiagnostic: call('elpo:pilotDiagnostic'),
   pilotCalibrate: call('elpo:pilotCalibrate'),
   pilotStart: call('elpo:pilotStart'),
   pilotStop: call('elpo:pilotStop'),

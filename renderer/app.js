@@ -984,6 +984,16 @@ $('pilotSave').onclick = () => task(async () => { await savePilot(); notice('Ré
 $('clearExportPoint').onclick = () => task(() => savePilot({ exportButton: null }));
 $('chooseCapcutDir').onclick = () => task(async () => { const dir = await unwrap(api.chooseDir({ purpose: 'capcut' })); if (dir) await savePilot({ exportDir: dir }); });
 $('pilotAccess').onclick = () => task(async () => { const okay = await unwrap(api.pilotAccess()); pilotAccessOk = okay; renderPilotState(); $('accessState').textContent = okay ? 'Accessibilité autorisée' : 'Accessibilité à autoriser'; $('accessState').className = `pill ${okay ? 'green' : 'red'}`; if (!okay) notice('Coche ElpoAiAutoCapcut dans Réglages Système → Confidentialité et sécurité → Accessibilité, puis réessaie.'); });
+$('pilotDiagnostic').onclick = () => task(async () => {
+  $('pilotDiagnosticState').textContent = 'Lecture de CapCut en cours…';
+  try {
+    const result = await unwrap(api.pilotDiagnostic());
+    $('pilotDiagnosticState').textContent = result ? `Diagnostic enregistré : ${result.file}` : 'Enregistrement annulé.';
+  } catch (error) {
+    $('pilotDiagnosticState').textContent = 'Diagnostic interrompu.';
+    throw error;
+  }
+});
 // A full-screen sight opens over CapCut: one click records the point, Escape cancels.
 function aim(target) {
   return task(async () => {

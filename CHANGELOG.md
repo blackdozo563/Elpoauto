@@ -1,5 +1,10 @@
 # Changements
 
+## Diagnostic de la 0.6.4 (branche dédiée, sans nouvelle release)
+- Dans Réglages → Pilotage de CapCut, « Enregistrer le diagnostic CapCut » relève l’interface avec les trois profondeurs de lecture de la 0.6.4. Le JSON conserve les contrôles bruts, les lectures partielles ou en erreur, les coordonnées du bouton final, le chemin de sortie, le calibrage et le journal.
+- Lecture depuis l’application installée, avec son contexte d’autorisations macOS. Aucun clic, raccourci, déplacement de fenêtre ou lancement d’export n’est effectué ; le fichier est enregistré localement à l’emplacement choisi.
+- Ce build sert à relever l’échec réel avant une correction. Il ne modifie pas le parcours d’export et ne prouve pas son fonctionnement dans CapCut.
+
 ## 0.6.4
 - **ELPO suit enfin le pourcentage de l'export CapCut.** La lecture de l'interface jetait toute valeur qui n'était pas du texte : la valeur de la barre de progression de CapCut (un nombre) arrivait donc toujours vide, et ELPO n'interrogeait CapCut que toutes les 45 s sans y chercher de pourcentage. Désormais les valeurs numériques sont conservées (avec le maximum de la barre), une lecture ciblée s'arrête dès la barre de progression trouvée, et CapCut est interrogé toutes les 2 s. Le HUD affiche « Export CapCut · 45 % ».
 - **Fin de l'export reconnue par CapCut lui-même** : 100 % atteint après avoir été vu plus bas, ou panneau « Exportation terminée ». Un « 100 % » déjà affiché avant l'export (zoom, volume, opacité…) est relevé au moment du clic et ignoré : il ne peut pas passer pour la fin. Une barre qui disparaît n'est conclue qu'après deux lectures complètes, et seulement si le fichier le confirme.

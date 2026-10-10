@@ -10,6 +10,7 @@ import { ExportQueue, findFfmpeg } from '../lib/export-queue.js';
 import { CapcutPilot, DEFAULT_PILOT } from '../lib/capcut-pilot.js';
 import { validFrame } from '../lib/capcut-ui.js';
 import { macActions, CAPCUT_ID } from '../lib/mac-automation.js';
+import { captureCapcutDiagnostic } from '../lib/capcut-diagnostic.js';
 import { waveform } from '../lib/waveform.js';
 import { TRAY_ICON_PNG } from './tray-icon.js';
 
@@ -402,11 +403,37 @@ else {
       return ok(settings.pilot);
     });
     register('elpo:pilotAccess', async () => ok(!mac || systemPreferences.isTrustedAccessibilityClient(true)));
-    let calibrating = false;
+    let calibrating = false, diagnosing = false;
+    register('elpo:pilotDiagnostic', async () => {
+      if (!mac) throw new Error('Ce diagnostic nécessite macOS et CapCut ouvert.');
+      if (pilotRunning() || calibrating || diagnosing || busy) throw new Error('Arrête le pilotage et attends la fin de l’opération avant le diagnostic.');
+      diagnosing = true;
+      try {
+        const actions = macActions();
+        if (!(await actions.isRunning())) throw new Error('Ouvre CapCut sur sa fenêtre d’export avant le diagnostic.');
+        const report = await captureCapcutDiagnostic(actions, {
+          version: app.getVersion(), mode: 'diagnostic-0.6.4', platform: process.platform,
+          arch: process.arch, versions: process.versions,
+          accessibility: systemPreferences.isTrustedAccessibilityClient(false),
+          calibration: { exportButton: settings.pilot.exportButton, frames: settings.pilot.frames },
+          displays: screen.getAllDisplays().map(({ bounds, scaleFactor }) => ({ bounds, scaleFactor })),
+          log: pilot?.log.slice(-120) || [],
+        });
+        const { canceled, filePath } = await dialog.showSaveDialog(window, {
+          title: 'Enregistrer le diagnostic CapCut',
+          defaultPath: path.join(app.getPath('desktop'), `diagnostic-capcut-${report.at.replace(/[:.]/g, '-')}.json`),
+          filters: [{ name: 'Diagnostic JSON', extensions: ['json'] }],
+        });
+        if (canceled || !filePath) return ok(null);
+        atomicWrite(filePath, Buffer.from(JSON.stringify(report, null, 2)));
+        return ok({ file: filePath });
+      } finally { diagnosing = false; }
+    });
     register('elpo:pilotCalibrate', async target => {
       if (!['home', 'tile', 'exportButton'].includes(target)) throw new Error('Cible inconnue.');
       if (pilotRunning()) throw new Error('Pilotage en cours : attends sa fin avant de viser.');
       if (calibrating) throw new Error('Une visée est déjà en cours.');
+      if (diagnosing) throw new Error('Diagnostic en cours.');
       calibrating = true;
       try {
         // CapCut comes to the front when it is open, then the sight covers the screen.
@@ -428,6 +455,7 @@ else {
       } finally { calibrating = false; }
     });
     register('elpo:pilotStart', async ({ projects, test = false } = {}) => {
+      if (diagnosing || calibrating) throw new Error('Attends la fin du diagnostic ou de la visée avant de lancer le pilotage.');
       if (busy) throw new Error('Une écriture ELPO est en cours.');
       if (pilotRunning()) throw new Error('Un pilotage CapCut est déjà en cours.');
       if (!pilot) throw new Error('Choisis le dossier de projets CapCut.');

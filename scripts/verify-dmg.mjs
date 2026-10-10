@@ -92,6 +92,7 @@ try {
       if (document.readyState !== 'complete' || !window.elpo?.status) return null;
       const status = await window.elpo.status();
       return { ready: document.readyState, buttons: document.querySelectorAll('button').length,
+        diagnosticReady: typeof window.elpo.pilotDiagnostic === 'function' && typeof document.querySelector('#pilotDiagnostic')?.onclick === 'function',
         booting: document.body.classList.contains('booting'), version: document.querySelector('#version')?.textContent, status };
     })()`);
     assert(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
@@ -105,6 +106,7 @@ try {
   assert.equal(state.status.ok, true, 'Preload to main IPC failed');
   assert.equal(state.status.result.version, expected.version);
   assert.equal(state.status.result.platform, 'darwin');
+  assert.equal(state.diagnosticReady, true, 'Diagnostic button or preload API missing from packaged app');
   await delay(1000);
   assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
   assert.equal(child.exitCode, null, `Application exited after startup:\n${nativeLog}`);

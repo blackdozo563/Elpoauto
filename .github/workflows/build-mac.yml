@@ -52,3 +52,10 @@ jobs:
             dist/*.dmg
             dist/SHA256SUMS.txt
             dist/dmg-validation.json
+      - name: Attach the diagnostic build separately to the existing 0.6.4 release
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/diagnostic-0.6.4'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp dist/ElpoAiAutoCapcut-0.6.4-arm64.dmg dist/ElpoAiAutoCapcut-0.6.4-diagnostic-arm64.dmg
+          gh release upload v0.6.4 dist/ElpoAiAutoCapcut-0.6.4-diagnostic-arm64.dmg --repo "$GITHUB_REPOSITORY"
