@@ -15,7 +15,7 @@ jobs:
       - name: Vérifier ARM64 et compiler Swift
         run: |
           test "$(uname -m)" = arm64
-          bash prototype/capcut-ax/build.sh
+          node scripts/ci-command.cjs bash prototype/capcut-ax/build.sh
       - name: Contrôles de commande unique et coordonnées
         run: '"dist/capcut-ax-prototype/CapCut AX Prototype.app/Contents/MacOS/CapCutAXPrototype" --self-test > dist/capcut-ax-prototype/controles-techniques.json'
       - name: Ouvrir le prototype sans commande CapCut
