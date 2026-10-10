@@ -1,6 +1,7 @@
 # Changements
 
 ## 0.6.0
+- Correctif de pilotage en test : retour sur Accueil depuis le Studio IA, restauration de la géométrie du calibrage, confirmation du projet et du dialogue d'export par Accessibilité, arrêt du lot si l'étape échoue. Aucune commande d'export sur un projet non confirmé. Détection des exports remplaçant un fichier existant et erreur après 90 secondes sans fichier ni encodage confirmé.
 - Interface repensée : rail de navigation, **Plateau** en trois zones (chutier, visionneuse, inspecteur) avec la timeline toujours visible, et **Salle de rendu** séparée de la préparation du lot (vidéos en cours, en attente, à revoir, heure de fin estimée).
 - Aperçu vivant : après une première analyse, chaque réglage relance l’aperçu (lecture seule) et la visionneuse rejoue les mouvements (zoom, panoramiques, Ken Burns) avec le même calcul que l’écriture CapCut.
 - Export automatique (moteur par défaut du lot) : chaque projet, monté par ELPO ou à la main, part sur l’export ELPO s’il est rendu fidèlement, sinon via CapCut, avec la raison affichée (titres, effets, filtres, pistes superposées…).

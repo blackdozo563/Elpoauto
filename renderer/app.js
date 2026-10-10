@@ -757,6 +757,7 @@ function renderBatch() {
 let pilotAccessOk = null;
 function renderPilotState() {
   const p = pilotSettings;
+  $('homePoint').textContent = p.home ? `x ${p.home.x}, y ${p.home.y}` : 'Détection automatique, ou viser le bouton dans la barre de gauche';
   const items = [
     [pilotAccessOk === true, pilotAccessOk === true ? 'Accessibilité autorisée' : 'Autorise ELPO à piloter CapCut (Accessibilité de macOS)', pilotAccessOk === true ? null : ['Autoriser', () => $('pilotAccess').onclick()]],
     [!!p.exportDir, p.exportDir ? `Exports CapCut : ${p.exportDir}` : 'Indique le dossier où CapCut enregistre ses vidéos', [p.exportDir ? 'Changer' : 'Choisir', () => $('chooseCapcutDir').onclick()]],

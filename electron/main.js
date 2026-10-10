@@ -8,6 +8,7 @@ import { atomicWrite, readJson } from '../lib/storage.js';
 import { MediaServer } from '../lib/media-server.js';
 import { ExportQueue, findFfmpeg } from '../lib/export-queue.js';
 import { CapcutPilot, DEFAULT_PILOT } from '../lib/capcut-pilot.js';
+import { validFrame } from '../lib/capcut-ui.js';
 import { macActions, CAPCUT_ID } from '../lib/mac-automation.js';
 import { waveform } from '../lib/waveform.js';
 import { TRAY_ICON_PNG } from './tray-icon.js';
@@ -390,7 +391,7 @@ else {
       if (value) {
         const n = (v, min, max, d) => Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Number(v))) : d;
         const point = v => v && Number.isFinite(v.x) && Number.isFinite(v.y) ? { x: Math.round(v.x), y: Math.round(v.y) } : null;
-        settings.pilot = { ...settings.pilot, tile: point(value.tile) ?? settings.pilot.tile, exportButton: value.exportButton === null ? null : point(value.exportButton) ?? settings.pilot.exportButton,
+        settings.pilot = { ...settings.pilot, home: point(value.home) ?? settings.pilot.home, tile: point(value.tile) ?? settings.pilot.tile, exportButton: value.exportButton === null ? null : point(value.exportButton) ?? settings.pilot.exportButton,
           openWith: value.openWith === 'single' ? 'single' : 'double', exportDir: typeof value.exportDir === 'string' ? value.exportDir : settings.pilot.exportDir,
           launchSeconds: n(value.launchSeconds, 3, 90, 12), openSeconds: n(value.openSeconds, 2, 90, 8), dialogSeconds: n(value.dialogSeconds, 1, 30, 3),
           stableSeconds: n(value.stableSeconds, 2, 60, 4), timeoutMinutes: n(value.timeoutMinutes, 1, 600, 60), quitSeconds: n(value.quitSeconds, 5, 120, 25),
@@ -403,18 +404,26 @@ else {
     register('elpo:pilotAccess', async () => ok(!mac || systemPreferences.isTrustedAccessibilityClient(true)));
     let calibrating = false;
     register('elpo:pilotCalibrate', async target => {
-      if (!['tile', 'exportButton'].includes(target)) throw new Error('Cible inconnue.');
+      if (!['home', 'tile', 'exportButton'].includes(target)) throw new Error('Cible inconnue.');
       if (pilotRunning()) throw new Error('Pilotage en cours : attends sa fin avant de viser.');
       if (calibrating) throw new Error('Une visée est déjà en cours.');
       calibrating = true;
       try {
         // CapCut comes to the front when it is open, then the sight covers the screen.
-        if (mac) { const actions = macActions(); if (await actions.isRunning().catch(() => false)) await actions.activate().catch(() => null); }
+        let frame = null;
+        if (mac) {
+          const actions = macActions();
+          if (!(await actions.isRunning())) throw new Error('Ouvre CapCut sur la page de la cible avant de viser.');
+          await actions.activate();
+          frame = await actions.windowFrame();
+          if (!validFrame(frame)) throw new Error('Fenêtre CapCut introuvable. Quitte le plein écran puis réessaie.');
+        }
         const point = await aimAt(target);
         window?.show(); window?.focus();
         if (!point) return ok(null);
         if (pilotRunning()) throw new Error('Un pilotage a démarré pendant la visée : position non enregistrée.');
-        settings.pilot = { ...settings.pilot, [target]: point }; saveSettings(); makePilot();
+        if (frame && (point.x < frame.x || point.y < frame.y || point.x >= frame.x + frame.width || point.y >= frame.y + frame.height)) throw new Error('La cible doit être à l’intérieur de la fenêtre CapCut.');
+        settings.pilot = { ...settings.pilot, [target]: point, frames: { ...settings.pilot.frames, [target]: frame } }; saveSettings(); makePilot();
         return ok(settings.pilot);
       } finally { calibrating = false; }
     });
