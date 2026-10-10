@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { CAPCUT_UI_SCRIPT, automationFailure } from '../lib/mac-automation.js';
+import { CAPCUT_UI_SCRIPT, CAPCUT_EXPORT_UI_SCRIPT, automationFailure } from '../lib/mac-automation.js';
 import { editorIsOpen, exportDialogIsOpen, exportTarget, uiSummary } from '../lib/capcut-ui.js';
 import { CapcutPilot } from '../lib/capcut-pilot.js';
 import { fixture } from './fixtures.js';
@@ -10,8 +10,8 @@ function element(name, children = [], extra = {}) {
   const props = { name, role: 'AXGroup', description: '', value: null, enabled: true, visible: true, position: [0, 40], size: [1200, 800], ...extra };
   return { properties: () => props, uiElements: () => children, ...Object.fromEntries(Object.entries(props).map(([key, value]) => [key, () => value])) };
 }
-function read(windows, extra = {}) {
-  return JSON.parse(vm.runInNewContext(CAPCUT_UI_SCRIPT, {
+function read(windows, extra = {}, script = CAPCUT_UI_SCRIPT) {
+  return JSON.parse(vm.runInNewContext(script, {
     Application: () => ({ processes: { byName: () => ({ windows: () => windows }) } }), ...extra,
   }));
 }
@@ -24,6 +24,78 @@ test('lecture macOS : propriétés groupées, sans un appel par attribut', () =>
   const ui = read([element('CapCut', [button])]);
   assert.equal(editorIsOpen(ui), true);
   assert.equal(ui.truncated, false);
+});
+
+function exportSheet(target = '/Users/macbook/Desktop/TESTO.mp4') {
+  return element('', [element('ExportPathInput'), element(target), element('ExportOkBtn', [], { role: 'AXButton', position: [992, 741], size: [72, 28] }), element('ExportDialog')], { role: 'AXSheet' });
+}
+
+test('lecture export : feuille macOS lue avant toute la timeline de l’éditeur', () => {
+  const w = element('CapCut');
+  w.sheets = () => [exportSheet()];
+  w.uiElements = () => assert.fail('le corps de l’éditeur ne doit pas être parcouru');
+  const ui = read([element('', [], { size: [183, 88] }), w], {}, CAPCUT_EXPORT_UI_SCRIPT);
+  assert.equal(ui.complete, true);
+  assert.equal(ui.timedOut, false);
+  assert.equal(exportDialogIsOpen(ui), true);
+  assert.equal(exportTarget(ui), '/Users/macbook/Desktop/TESTO.mp4');
+});
+
+test('lecture export : feuille imbriquée priorisée grâce aux attributs de collection', () => {
+  const expensive = element('médias');
+  expensive.name = () => assert.fail('les médias ne doivent pas être parcourus');
+  const children = [expensive, exportSheet()];
+  const w = element('CapCut', children);
+  for (const key of ['name', 'description', 'role', 'value', 'visible']) {
+    Object.defineProperty(w.uiElements, key, { value: () => children.map(child => child.properties()[key]) });
+  }
+  const ui = read([w], {}, CAPCUT_EXPORT_UI_SCRIPT);
+  assert.equal(ui.complete, true);
+  assert.equal(exportDialogIsOpen(ui), true);
+});
+
+test('lecture export : une feuille en arrière-plan ne confirme jamais le clic', () => {
+  const front = element('CapCut', [element('MainTimeLineRoot')]);
+  const background = element('CapCut'); background.sheets = () => [exportSheet()];
+  const ui = read([front, background], {}, CAPCUT_EXPORT_UI_SCRIPT);
+  assert.equal(ui.complete, false);
+  assert.equal(exportDialogIsOpen(ui), false);
+});
+
+test('lecture export : bouton invisible ignoré et chemin manquant non confirmé', () => {
+  const button = element('ExportOkBtn', [], { role: 'AXButton', visible: false, position: [992, 741], size: [72, 28] });
+  const w = element('CapCut'); w.sheets = () => [element('ExportDialog', [button, element('/tmp/TESTO.mp4')], { role: 'AXSheet' })];
+  let ui = read([w], {}, CAPCUT_EXPORT_UI_SCRIPT);
+  assert.equal(ui.complete, false); assert.equal(exportDialogIsOpen(ui), false);
+  w.sheets = () => [element('ExportDialog', [element('ExportOkBtn', [], { role: 'AXButton', position: [992, 741], size: [72, 28] })], { role: 'AXSheet' })];
+  ui = read([w], {}, CAPCUT_EXPORT_UI_SCRIPT);
+  assert.equal(ui.complete, false); assert.equal(exportTarget(ui), null);
+});
+
+test('pilote : les deux vérifications d’export demandent le relevé dédié', async () => {
+  const f = fixture();
+  const options = [];
+  try {
+    const ui = read([Object.assign(element('CapCut'), { sheets: () => [exportSheet()] })], {}, CAPCUT_EXPORT_UI_SCRIPT);
+    const pilot = new CapcutPilot({ root: f.root, actions: { readUi: async value => { options.push(value); return ui; } } });
+    const signal = new AbortController().signal;
+    await pilot.verifyUi(exportDialogIsOpen, 0, signal, 'EXPORT_DIALOG', 'non confirmé');
+    await pilot.verifyUi(exportDialogIsOpen, 0, signal, 'EXPORT_DIALOG', 'non confirmé');
+    assert.deepEqual(options, [{ purpose: 'export' }, { purpose: 'export' }]);
+  } finally { f.cleanup(); }
+});
+
+test('pilote : identifiants présents mais relevé d’export incomplet, aucune confirmation', async () => {
+  const f = fixture();
+  try {
+    const w = element('CapCut');
+    w.sheets = () => [element('ExportDialog', [element('ExportOkBtn', [], { role: 'AXButton', enabled: false, position: [992, 741], size: [72, 28] }), element('/tmp/TESTO.mp4')], { role: 'AXSheet' })];
+    const ui = read([w], {}, CAPCUT_EXPORT_UI_SCRIPT);
+    assert.equal(exportDialogIsOpen(ui), true);
+    assert.equal(ui.complete, false);
+    const pilot = new CapcutPilot({ root: f.root, actions: { readUi: async () => ui } });
+    await assert.rejects(pilot.verifyUi(exportDialogIsOpen, 0, new AbortController().signal, 'EXPORT_DIALOG', 'Aucun clic Exporter envoyé.'), { code: 'EXPORT_DIALOG' });
+  } finally { f.cleanup(); }
 });
 
 test('lecture macOS : repli conservé si le groupe de propriétés est indisponible', () => {
