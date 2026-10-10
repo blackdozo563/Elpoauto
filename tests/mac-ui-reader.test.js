@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { CAPCUT_UI_SCRIPT, automationFailure } from '../lib/mac-automation.js';
-import { editorIsOpen, exportDialogIsOpen, exportTarget, uiSummary } from '../lib/capcut-ui.js';
+import { CAPCUT_UI_SCRIPT, capcutUiScript, automationFailure } from '../lib/mac-automation.js';
+import { editorIsOpen, exportDialogIsOpen, exportDialogWindow, exportOkPoint, exportTarget, uiIdentifiers, uiSummary } from '../lib/capcut-ui.js';
 import { CapcutPilot } from '../lib/capcut-pilot.js';
 import { fixture } from './fixtures.js';
 
@@ -87,4 +87,105 @@ test('pilote : délai de lecture conservé comme erreur bloquante, sans accuser 
       return true;
     });
   } finally { f.cleanup(); }
+});
+
+// ── CapCut 9 réel : éditeur chargé, feuille d’export ouverte ──────────────────────
+// Un projet réel expose des milliers de nœuds dans la timeline. Chaque événement
+// Apple vers CapCut coûte quelques dizaines de millisecondes : c’est ce coût, et non
+// le nombre de nœuds, qui faisait expirer la lecture avant d’atteindre la feuille.
+const EVENT_MS = 18;
+function fakeClock() { let now = 0; return { now: () => now, advance: ms => { now += ms; } }; }
+function ax(name, description, children, extra, clk) {
+  const props = { name, description, role: 'AXStaticText', value: null, enabled: true, visible: true, position: null, size: null, ...(extra || {}) };
+  const node = { properties: () => { clk.advance(EVENT_MS); return props; }, uiElements: () => { clk.advance(EVENT_MS); return children || []; } };
+  for (const [key, value] of Object.entries(props)) node[key] = () => { clk.advance(EVENT_MS); return value; };
+  return node;
+}
+function axWindow(title, children, sheets, frame, clk) {
+  const props = { name: title, description: '', role: 'AXWindow', value: null, enabled: true, visible: true, position: [frame.x, frame.y], size: [frame.width, frame.height] };
+  const w = { properties: () => { clk.advance(EVENT_MS); return props; }, uiElements: () => { clk.advance(EVENT_MS); return children || []; } };
+  if (sheets) w.sheets = () => { clk.advance(EVENT_MS); return sheets; };
+  return w;
+}
+const EXPORT_TARGET = '/Users/macbook/Desktop/TESTO(1).mp4';
+const editSheet = clk => ax('', 'feuille', [
+  ax('', 'ExportFileNameInput', [], { role: 'AXTextField' }, clk), ax('', 'ExportPathInput', [], { role: 'AXTextField' }, clk),
+  ax(EXPORT_TARGET, '', [], { value: EXPORT_TARGET }, clk), ax('', 'ExportFormatInput', [], {}, clk),
+  ax('automationcancel', '', [], { role: 'AXButton', position: [912, 741], size: [72, 28] }, clk),
+  ax('ExportOkBtn', '', [], { role: 'AXButton', position: [992, 741], size: [72, 28] }, clk),
+  ax('', 'ExportOkBtn', [], {}, clk), ax('', 'ExportDialog', [], {}, clk),
+], { role: 'AXSheet' }, clk);
+const editorBody = clk => [
+  ax('', 'MainWindowTitleBar', [ax('MainWindowTitleBarExportBtn', '', [], { position: [1272, 97], size: [77, 22] }, clk)], {}, clk),
+  ax('', 'root_Multimédia', Array.from({ length: 400 }, (_, i) => ax(`média ${i}`, '', [], {}, clk)), {}, clk),
+  ax('MainMultiTimelineLayout', '', [ax('MainTimeLineRoot', '',
+    Array.from({ length: 20 }, (_, t) => ax(`piste ${t}`, '', Array.from({ length: 60 }, (_, c) => ax(`plan ${t}-${c}`, '', [], {}, clk)), {}, clk)), {}, clk)], {}, clk),
+];
+// La bulle EditPilot, listée en premier par System Events, comme dans le relevé réel.
+const pilotBubble = clk => axWindow('', [ax('', 'dialogue', [], { role: 'AXWindow' }, clk)], null, { x: 1185, y: 734, width: 183, height: 88 }, clk);
+const editorFrame = { x: 80, y: 90, width: 1280, height: 720 };
+function readEditor(script, { sheetVia }) {
+  const clk = fakeClock(), body = editorBody(clk), sheet = editSheet(clk);
+  if (sheetVia === 'child') body.push(sheet);
+  const windows = [pilotBubble(clk), axWindow('CapCut', body, sheetVia === 'sheets' ? [sheet] : null, editorFrame, clk)];
+  const at = clk.now();
+  const ui = JSON.parse(vm.runInNewContext(script, { Application: () => ({ processes: { byName: () => ({ windows: () => windows }) } }), Date: clk }));
+  return { ui, ms: clk.now() - at };
+}
+
+test('lecture macOS : la feuille d’export exposée par « sheets » est lue avant la timeline', () => {
+  // Mode de panne réel : System Events ne liste la feuille d’export que parmi les
+  // « sheets » de la fenêtre. La lecture qui ne descend que dans uiElements expire
+  // dans la timeline et rend « CapCut [éditeur] · lecture partielle ».
+  const { ui, ms } = readEditor(CAPCUT_UI_SCRIPT, { sheetVia: 'sheets' });
+  assert.equal(exportDialogIsOpen(ui), true);
+  assert.equal(ui.timedOut, false, 'la lecture ne doit plus expirer');
+  assert.match(uiSummary(ui), /feuille d’export/);
+  assert.ok(ms < 6000, `lecture trop lente : ${ms} ms simulés`);
+  assert.deepEqual(exportOkPoint(ui), { x: 1028, y: 755 });
+  assert.equal(exportTarget(ui), EXPORT_TARGET);
+});
+
+test('lecture macOS : feuille enfant AXSheet derrière un chutier de 400 médias', () => {
+  const { ui } = readEditor(CAPCUT_UI_SCRIPT, { sheetVia: 'child' });
+  assert.equal(exportDialogIsOpen(ui), true);
+  assert.equal(ui.timedOut, false);
+  assert.equal(uiSummary(ui).includes('lecture partielle'), false, uiSummary(ui));
+  assert.equal(exportTarget(ui), EXPORT_TARGET);
+});
+
+test('lecture macOS : la timeline n’est pas descendue, les panneaux sont limités séparément', () => {
+  const { ui } = readEditor(CAPCUT_UI_SCRIPT, { sheetVia: 'sheets' });
+  assert.ok(ui.pruned >= 1, 'MainTimeLineRoot exclu du parcours');
+  assert.ok(ui.nodesRead < 150, `budget de lecture : ${ui.nodesRead} contrôles`);
+  // Le panneau de médias est plafonné sans empêcher la feuille d’être lue.
+  assert.ok(ui.nodesRead >= 50);
+});
+
+test('lecture macOS : la sonde s’arrête au premier identifiant de la feuille', () => {
+  const probe = capcutUiScript({ stop: ['exportdialog', 'exportokbtn', 'exportfilenameinput', 'exportpathinput'], deadlineMs: 6000 });
+  const { ui, ms } = readEditor(probe, { sheetVia: 'child' });
+  assert.equal(ui.found, true);
+  assert.equal(exportDialogIsOpen(ui), true);
+  assert.ok(ms < 3000, `sonde trop lente : ${ms} ms simulés`);
+  // Une sonde n’est pas une lecture complète : elle ne donne pas le bouton à cliquer.
+  assert.equal(exportTarget(ui), null);
+});
+
+test('interface CapCut : la feuille est cherchée dans toutes les fenêtres, pas seulement la première', () => {
+  const sheetWindow = { title: 'Export', frame: { x: 300, y: 200, width: 700, height: 500 }, nodes: [{ role: 'AXStaticText', name: '', description: 'ExportDialog' }] };
+  const editorOnly = { title: 'CapCut', frame: editorFrame, nodes: [{ role: 'AXStaticText', name: '', description: 'MainTimeLineRoot' }] };
+  const ui = { windows: [editorOnly, sheetWindow] };
+  assert.equal(exportDialogIsOpen(ui), true);
+  assert.equal(exportDialogWindow(ui), sheetWindow);
+  // La petite bulle flottante n’est jamais prise pour la feuille.
+  assert.equal(exportDialogIsOpen({ windows: [{ title: '', frame: { x: 0, y: 0, width: 183, height: 88 }, nodes: [{ description: 'ExportDialog' }] }] }), false);
+});
+
+test('diagnostic macOS : les identifiants vus sont listés pour un échec', () => {
+  const { ui } = readEditor(capcutUiScript({ stop: ['identifiant-inexistant'], deadlineMs: 400, maxNodes: 40, branchNodes: 12 }), { sheetVia: 'child' });
+  const ids = uiIdentifiers(ui);
+  assert.ok(ids.includes('mainwindowtitlebarexportbtn'), ids.join(', '));
+  assert.ok(ids.length <= 24);
+  assert.ok(uiIdentifiers({ windows: [] }).length === 0);
 });

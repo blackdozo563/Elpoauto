@@ -18,7 +18,7 @@ const dialog = snapshot(['Test ELPO', 'Exporter', 'Résolution', 'Format']);
 function setup(options = {}) {
   const f = fixture(), log = [];
   const exportDir = path.join(f.temp, 'exports'); fs.mkdirSync(exportDir);
-  let page = 'studio', open = false;
+  let page = 'studio', open = false, partialReads = 0;
   const homePoint = { x: 40, y: 90 }, tile = { x: 200, y: 250 };
   const frame = { x: 0, y: 0, width: 640, height: 480 };
   const actions = {
@@ -28,12 +28,21 @@ function setup(options = {}) {
     activate: async () => {}, quit: async () => { open = false; log.push('quit'); },
     restoreWindow: async value => { log.push(['restore', value]); },
     windowFrame: async () => options.badFrame ? { ...frame, width: 800 } : frame,
-    readUi: async () => {
+    readUi: async readOptions => {
       if (options.unreadable) throw new Error('Accessibilité refusée');
       if (page === 'studio') return snapshot([node('Accueil', { role: 'AXButton', position: [20, 80], size: [40, 20] }), 'Studio de conceptions', 'Inspiration']);
       if (page === 'home') return options.home || home;
-      if (page === 'editor') return options.wrongProject ? snapshot(['Autre projet', 'Exporter', 'Médias']) : editor;
-      return options.noDialog ? editor : (options.sheet || dialog);
+      if (page === 'editor') return options.editorUi || (options.wrongProject ? snapshot(['Autre projet', 'Exporter', 'Médias']) : editor);
+      // Une lecture partielle (délai atteint dans macOS) ne prouve rien : le pilote
+      // doit relire au lieu de déclarer la feuille absente.
+      if (options.partialReads && partialReads < options.partialReads) {
+        partialReads++;
+        return { windows: [{ title: 'CapCut', nodes: [] }], timedOut: true, truncated: true, nodesRead: 0 };
+      }
+      // La sonde ne voit rien, seule une lecture approfondie trouve la feuille.
+      if (options.deepOnly && !(readOptions?.maxNodes > 700)) return { windows: [{ title: 'CapCut', nodes: [] }] };
+      if (options.noDialog) return editor;
+      return typeof options.sheetFor === 'function' ? options.sheetFor(exportDir) : (options.sheet || dialog);
     },
     click: async (point, double) => {
       log.push(['click', point, double]);
@@ -41,6 +50,7 @@ function setup(options = {}) {
       if (point.x === homePoint.x && point.y === homePoint.y) page = 'home';
       else if (point.x === tile.x && point.y === tile.y && !options.stuckHome && !options.home) page = 'editor';
       else if (options.draftPoint && point.x === options.draftPoint.x && point.y === options.draftPoint.y) page = 'editor';
+      else if (options.exportOpenPoint && !options.exportClickBroken && point.x === options.exportOpenPoint.x && point.y === options.exportOpenPoint.y) page = 'dialog';
       else if (options.home) page = 'studio';
     },
     shortcut: async () => { log.push('shortcut'); page = 'dialog'; },
@@ -367,5 +377,65 @@ test('surveillance : un export qui remplace un fichier existant est détecté', 
     assert.deepEqual(newExports(s.exportDir, since, before), []);
     fs.writeFileSync(file, 'new video content');
     assert.deepEqual(newExports(s.exportDir, since, before), [file]);
+  } finally { s.f.cleanup(); }
+});
+
+// ── Ouverture de la feuille d’export ─────────────────────────────────────────────
+// CapCut 9 expose son propre bouton « Exporter » (MainWindowTitleBarExportBtn) : le
+// cliquer ne dépend ni de ⌘E, ni de la disposition du clavier, ni du focus.
+const exportOpenEditor = () => snapshot(['Test ELPO', 'Médias', ax('MainWindowTitleBarExportBtn', { position: [1272, 97], size: [77, 22] })]);
+// Feuille réelle : chemin annoncé dans le dossier d’export surveillé + ExportOkBtn.
+const sheetIn = dir => ({ windows: [{ title: 'CapCut', nodes: [...editorNodes, ...sheetNodes(path.join(dir, 'Test ELPO.mp4'))] }] });
+const EXPORT_OPEN_POINT = { x: 1310.5, y: 108 };
+
+test('pilote : le bouton « Exporter » de CapCut est cliqué, ⌘E n’est pas envoyé', async () => {
+  const s = setup({ editorUi: exportOpenEditor(), exportOpenPoint: EXPORT_OPEN_POINT, sheetFor: sheetIn });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error);
+    assert.ok(s.log.filter(Array.isArray).some(v => v[0] === 'click' && v[1].x === EXPORT_OPEN_POINT.x && v[1].y === EXPORT_OPEN_POINT.y), 'clic sur le bouton réel');
+    assert.ok(!s.log.includes('shortcut'), '⌘E ne doit pas être envoyé');
+    assert.ok(!s.log.includes('return'), 'clic sur ExportOkBtn, pas sur Entrée');
+  } finally { s.f.cleanup(); }
+});
+
+test('pilote : ⌘E en repli quand le clic sur le bouton « Exporter » n’ouvre pas la feuille', async () => {
+  const s = setup({ editorUi: exportOpenEditor(), exportOpenPoint: EXPORT_OPEN_POINT, exportClickBroken: true, sheetFor: sheetIn });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error);
+    assert.ok(s.log.includes('shortcut'), 'repli sur ⌘E');
+    assert.ok(s.pilot.log.some(l => /nouvel essai par raccourci ⌘E/.test(l.text)));
+  } finally { s.f.cleanup(); }
+});
+
+test('pilote : une seule lecture partielle ne déclare pas la feuille absente', async () => {
+  const s = setup({ partialReads: 1, sheetFor: sheetIn });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error);
+    assert.ok(!s.log.includes('return'), 'ExportOkBtn cliqué après la relecture');
+  } finally { s.f.cleanup(); }
+});
+
+test('pilote : lecture approfondie quand la sonde ne voit aucun identifiant de feuille', async () => {
+  const s = setup({ deepOnly: true, sheetFor: sheetIn });
+  try {
+    const [job] = await s.pilot.run(s.projects, { exportDir: s.exportDir });
+    assert.equal(job.status, 'done', job.error);
+    assert.ok(s.pilot.log.some(l => /lecture approfondie/.test(l.text)));
+    // La lecture qui a trouvé la feuille sert aussi à lire le bouton et le chemin.
+    assert.ok(!s.log.includes('return'), 'ExportOkBtn lu par la même lecture approfondie');
+  } finally { s.f.cleanup(); }
+});
+
+test('pilote : feuille jamais lisible, aucun Entrée et identifiants vus dans l’erreur', async () => {
+  const s = setup({ partialReads: 99 });
+  try {
+    const [job, pending] = await s.pilot.run([...s.projects, ...s.projects], { exportDir: s.exportDir });
+    assert.equal(job.status, 'failed'); assert.match(job.error, /fenêtre de réglages d’export/);
+    assert.match(job.error, /Contrôles lus :/);
+    assert.equal(pending.status, 'cancelled');
+    assert.ok(!s.log.includes('return')); assert.ok(!s.log.includes('quit'));
   } finally { s.f.cleanup(); }
 });

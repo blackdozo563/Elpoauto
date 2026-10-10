@@ -7,3 +7,5 @@ __pycache__/
 downloads/
 runtime/
 *.dmg
+capcut-ui-*.json
+.scratch/

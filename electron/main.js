@@ -393,7 +393,7 @@ else {
         const point = v => v && Number.isFinite(v.x) && Number.isFinite(v.y) ? { x: Math.round(v.x), y: Math.round(v.y) } : null;
         settings.pilot = { ...settings.pilot, home: point(value.home) ?? settings.pilot.home, tile: point(value.tile) ?? settings.pilot.tile, exportButton: value.exportButton === null ? null : point(value.exportButton) ?? settings.pilot.exportButton,
           openWith: value.openWith === 'single' ? 'single' : 'double', exportDir: typeof value.exportDir === 'string' ? value.exportDir : settings.pilot.exportDir,
-          launchSeconds: n(value.launchSeconds, 3, 90, 12), openSeconds: n(value.openSeconds, 2, 90, 8), dialogSeconds: n(value.dialogSeconds, 1, 30, 3),
+          launchSeconds: n(value.launchSeconds, 3, 90, 12), openSeconds: n(value.openSeconds, 2, 90, 8), dialogSeconds: n(value.dialogSeconds, 2, 60, 10),
           stableSeconds: n(value.stableSeconds, 2, 60, 4), timeoutMinutes: n(value.timeoutMinutes, 1, 600, 60), quitSeconds: n(value.quitSeconds, 5, 120, 25),
           missing: value.missing === 'continue' ? 'continue' : 'skip',
           closeKeys: Array.isArray(value.closeKeys) ? value.closeKeys.filter(k => ['escape', 'return'].includes(k)).slice(0, 3) : settings.pilot.closeKeys };

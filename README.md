@@ -1,4 +1,4 @@
-# ElpoAiAutoCapcut 0.6.0 — studio d'automontage CapCut
+# ElpoAiAutoCapcut 0.6.1 — studio d'automontage CapCut
 
 Application Electron pour Mac Apple Silicon qui **construit des timelines CapCut** (images, vidéos, voix off, musique, mouvements, transitions, effets, filtres) et **exporte les vidéos en lot**. Elle travaille sur les fichiers de projet CapCut (`draft_info.json`, `draft_meta_info.json`, index global) avec aperçu, sauvegarde et vérification avant toute écriture.
 
@@ -38,10 +38,11 @@ Le DMG autonome utilise Electron 32.3.3 installé depuis npm. L'ancien paquet ZI
 
 ## Développement
 
-Node.js 22+ : `npm ci`, puis `npm test` (115 tests, dont un rendu FFmpeg réel et une forme d'onde réelle si FFmpeg est installé). Aucune dépendance npm d'exécution ; Electron et electron-builder sont des dépendances de développement verrouillées par package-lock.json. `npm start` lance Electron installé localement.
+Node.js 22+ : `npm ci`, puis `npm test` (147 tests, dont un rendu FFmpeg réel et une forme d'onde réelle si FFmpeg est installé). Aucune dépendance npm d'exécution ; Electron et electron-builder sont des dépendances de développement verrouillées par package-lock.json. `npm start` lance Electron installé localement.
 - `lib/engine.js` : analyse, plan, construction du draft (mouvements, transitions, effets, filtres, musique), lot.
 - `lib/render.js` + `lib/export-queue.js` : export ELPO (plan lu depuis le draft, commandes FFmpeg pures et testées, file).
-- `lib/capcut-pilot.js` + `lib/mac-automation.js` : pilotage de CapCut (séquence testable, actions macOS via osascript/CoreGraphics).
+- `lib/capcut-pilot.js` + `lib/mac-automation.js` : pilotage de CapCut (séquence testable, actions macOS via osascript/CoreGraphics). `lib/capcut-ui.js` interprète les relevés d'accessibilité (accueil, éditeur, feuille d'export, vignettes de projets).
+- `npm run diag:capcut` : relève l'interface de CapCut ouvert (sonde, lecture standard, lecture approfondie) et écrit `capcut-ui-<horodatage>.json`. À joindre à tout rapport de panne du pilotage : ce fichier donne les identifiants d'automatisation réellement exposés par la version de CapCut installée.
 - `lib/storage.js` : écritures atomiques, transactions avec sauvegarde, restauration.
 - `lib/fidelity.js` : contrôle de fidélité du moteur automatique (ELPO ou CapCut par projet). `lib/waveform.js` : forme d'onde calculée par FFmpeg.
 - `renderer/hud.*` et `renderer/aim.*` (+ `electron/preload-overlay.cjs`) : HUD de pilotage et visée plein écran ; `electron/tray-icon.js` : icône de la barre des menus.
@@ -53,5 +54,6 @@ Node.js 22+ : `npm ci`, puis `npm test` (115 tests, dont un rendu FFmpeg réel e
 
 - La compatibilité JSON est validée sur des projets synthétiques : contrôler le premier rendu dans CapCut 9.3.0 (surtout panoramiques, effets et filtres recopiés).
 - Le pilotage de CapCut dépend de l'interface de CapCut : calibrer après chaque mise à jour de CapCut. Le correctif de test 0.6 revient sur Accueil et exige une confirmation accessible du nom du projet et du dialogue d'export. Si CapCut n'expose pas ces contrôles à macOS, le lot s'arrête avec une erreur plutôt que d'envoyer des touches à l'aveugle. Ce parcours reste à vérifier sur CapCut 9.3.0 réel.
+- Le pilotage lit l'interface par paliers : sonde ciblée sur les identifiants de la feuille d'export, puis lecture standard, puis lecture approfondie (25 s). Si la feuille n'est toujours pas confirmée, l'erreur liste les identifiants vus ; lancer `npm run diag:capcut` avec CapCut ouvert sur l'éditeur et la feuille d'export affichée, et joindre le `capcut-ui-*.json` produit. Le réglage « Fenêtre d'export (s) » doit couvrir l'ouverture de la feuille par CapCut **et** une lecture d'interface (10 s par défaut).
 - Après installation du correctif de test, viser à nouveau la première vignette et le bouton Exporter pour enregistrer la géométrie de chaque fenêtre. Viser également le bouton Accueil si la détection automatique échoue. Utiliser une fenêtre normale (sans plein écran) ; le pilotage restaure la taille et la position enregistrées. Après 90 secondes sans fichier ni encodage confirmé, une erreur indique le dossier à vérifier et conserve CapCut ouvert pour le diagnostic.
 - La timeline cible doit être vide : ELPO ne modifie pas un montage existant.
