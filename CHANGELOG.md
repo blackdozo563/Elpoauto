@@ -1,5 +1,13 @@
 # Changements
 
+## Correctif du pilote natif 0.7.0 — 11 octobre 2026
+
+- CapCut est remis au premier plan avant AXPress, puis la feuille et le bouton sont relus. Le premier plan est vérifié à nouveau juste avant l’envoi, comme dans le prototype autonome.
+- Si macOS ne fournit pas AXFocusedApplication, l’outil utilise le premier plan de NSWorkspace et actualise sa boucle d’événements pendant l’activation.
+- Le HUD est masqué pendant AXPress. Le diagnostic conserve les retours des 40 dernières commandes (PID au premier plan, contrôle, AXPress, erreurs et durées).
+- Le journal distingue la commande envoyée du démarrage réellement détecté. Le diagnostic du premier essai 0.7 est ajouté aux relevés de test.
+- La correction reste un paquet d’essai, sans release publique ; l’export réel n’est pas validé par la CI.
+
 ## 0.7.0 — pilote CapCut natif (à valider sur ton Mac avant toute release)
 - **Le pilotage ne vise plus rien.** ELPO lit et commande CapCut par ses identifiants internes, avec un outil natif Swift embarqué dans l’app (`Contents/MacOS/capcut-ax`, sources `tools/capcut-ax`). Plus de System Events, plus de JXA, plus de calibrage « Viser », plus de touche Entrée ni de ⌘E. Une lecture de CapCut prend environ 0,1 s au lieu de 6 à 25 s.
 - **Écrans tirés du relevé réel** (CapCut 9.3.0, 11 octobre, `tests/fixtures/capcut-9.3.0-cycle.json`, anonymisé) : accueil (`HomePageDraft`, `HomePageDraftTitle:<nom>`), éditeur (`MainWindowTitleBarExportBtn`, `totalProgress`), réglages (`ExportOkBtn`, chemin annoncé), export en cours (`ExportProgress:NN%`), fin (`automationcloseBtn`).
@@ -81,11 +89,3 @@
 - Export via CapCut 9.3 : pilotage calibrable (projet en tête de liste, ⌘E, bouton Exporter, détection d'un fichier complet, fermeture de la fenêtre de fin d'export, retour à l'accueil), détection préalable des médias manquants.
 - Moteur : panoramiques et Ken Burns, transitions variées (ordre déterministe), effets et filtres recopiés depuis tes projets (par scène ou sur toute la vidéo), musique de fond, favoris (projet « ELPO Favoris » + étoiles), styles enregistrés.
 - Toutes les fonctions 0.4.0 conservées : 6 placements, dossier Flow, plan éditable, SRT, JSON, aperçu, sauvegardes, restauration, récupération.
-# Correctif du pilote natif 0.7.0 — 11 octobre 2026
-
-- CapCut est remis au premier plan avant AXPress, puis la feuille et le bouton sont relus. Le premier plan est vérifié à nouveau juste avant l’envoi, comme dans le prototype autonome.
-- Si macOS ne fournit pas AXFocusedApplication, l’outil utilise le premier plan de NSWorkspace et actualise sa boucle d’événements pendant l’activation.
-- Le HUD est masqué pendant AXPress. Le diagnostic conserve les retours des 40 dernières commandes (PID au premier plan, contrôle, AXPress, erreurs et durées).
-- Le journal distingue la commande envoyée du démarrage réellement détecté. Le diagnostic du premier essai 0.7 est ajouté aux relevés de test.
-- La correction reste un paquet d’essai, sans release publique ; l’export réel n’est pas validé par la CI.
-
