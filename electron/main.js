@@ -55,13 +55,23 @@ const pilotRunning = () => !!pilot?.controller;
 // The native helper ships next to the app's executable (Contents/MacOS/capcut-ax); in
 // development it is built by `npm run build:native`.
 const helperPath = () => app.isPackaged ? path.join(path.dirname(app.getPath('exe')), 'capcut-ax') : fileURLToPath(new URL('../build/native/capcut-ax', import.meta.url));
+const nativeCommands = [];
 function makeDriver() {
-  const base = nativeDriver({ binary: helperPath() });
+  const base = nativeDriver({ binary: helperPath(), onCommand: evidence => {
+    nativeCommands.push(evidence);
+    if (nativeCommands.length > 40) nativeCommands.splice(0, nativeCommands.length - 40);
+  } });
   // The helper moves the pointer for its two clicks per project (the tile, the editor's
   // « Exporter »): the pause-on-mouse watch must not take them for the user's hand.
   // The HUD is hidden during a click: the helper checks that the element under the
   // point belongs to CapCut, and the HUD floats above CapCut's title bar.
-  return { ...base, click: async args => {
+  const withoutHud = async fn => {
+    const shown = !!hud && !hud.isDestroyed() && hud.isVisible();
+    if (shown) hud.hide();
+    try { return await fn(); }
+    finally { if (shown && hudState && hud && !hud.isDestroyed()) hud.showInactive(); }
+  };
+  return { ...base, press: args => withoutHud(() => base.press(args)), click: async args => {
     automated = { x: Math.round(args.x), y: Math.round(args.y), at: Date.now(), until: Date.now() + 8000 };
     const hudShown = !!hud && !hud.isDestroyed() && hud.isVisible();
     if (hudShown) hud.hide();
@@ -411,7 +421,7 @@ else {
         if (!driver.available()) throw Object.assign(new Error('L’outil natif capcut-ax est absent de l’application : réinstalle ElpoAiAutoCapcut.'), { code: 'NATIVE_MISSING' });
         const at = new Date().toISOString();
         const report = { schema: 2, at, app: { version: app.getVersion(), platform: process.platform, arch: process.arch, accessibility: systemPreferences.isTrustedAccessibilityClient(false) },
-          displays: screen.getAllDisplays().map(({ bounds, scaleFactor }) => ({ bounds, scaleFactor })), pilot: settings.pilot, log: pilot?.log.slice(-120) || [] };
+          displays: screen.getAllDisplays().map(({ bounds, scaleFactor }) => ({ bounds, scaleFactor })), pilot: settings.pilot, log: pilot?.log.slice(-120) || [], nativeCommands: [...nativeCommands] };
         for (const [key, read] of [['helper', () => driver.version()], ['snapshot', () => driver.snapshot()], ['state', () => driver.state()]]) {
           try { report[key] = await read(); } catch (error) { report[key] = { error: { code: error.code ?? null, message: error.message } }; }
         }

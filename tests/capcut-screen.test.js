@@ -1,8 +1,22 @@
 // The screen reader on the real CapCut 9.3.0 recording of 11 October 2026.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { readScreen, chooseTile, targetMatches, timecodeSeconds, visiblePart, describeScreen, center } from '../lib/capcut-screen.js';
 import { frames, sheetOnly, substitute } from './capcut-sim.js';
+
+test('diagnostic réel 0.7 : AXPress accepté ne prouve pas le démarrage de l’export', () => {
+  const snapshot = JSON.parse(fs.readFileSync(new URL('./fixtures/capcut-0.7-press-no-effect.json', import.meta.url)));
+  const screen = readScreen(snapshot);
+  assert.equal(snapshot.trusted, true);
+  assert.equal(screen.screen, 'export-settings');
+  assert.equal(screen.reliable, true);
+  assert.equal(screen.okPress, true);
+  assert.equal(screen.okEnabled, true);
+  assert.equal(screen.target, '/Users/demo/Desktop/projet 1-30sec.mp4');
+  assert.equal(screen.percent, undefined);
+  assert.equal(screen.frontmost, false);
+});
 
 test('relevé réel : chaque page du cycle est reconnue', () => {
   const expected = {

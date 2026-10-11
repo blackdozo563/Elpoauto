@@ -61,3 +61,17 @@ test('FFprobe : durée, fichier illisible, FFprobe absent', async () => {
   assert.equal(await actions.accessibility(), false, 'plus de System Events : seule l’autorisation macOS compte');
   for (const removed of ['readUi', 'click', 'key', 'shortcut', 'restoreWindow', 'windowFrame']) assert.equal(actions[removed], undefined, removed);
 });
+
+test('outil natif : conserve le retour de la commande, distinct de son effet dans CapCut', async () => {
+  const result = { ok: true, commandAttempted: true, pressResult: 'success', focusedPID: 123, target: '/Users/demo/Desktop/projet 1-30sec.mp4' };
+  const h = helper((args, done) => done(null, JSON.stringify(result), ''));
+  const evidence = [];
+  try {
+    const d = nativeDriver({ binary: h.binary, run: h.run, onCommand: e => evidence.push(e) });
+    await d.press({ label: 'ExportOkBtn', expectName: 'projet 1-30sec' });
+    assert.equal(evidence.length, 1);
+    assert.deepEqual(evidence[0].result, result);
+    assert.equal(evidence[0].args[0], 'press');
+    assert.ok(evidence[0].durationMs >= 0);
+  } finally { h.cleanup(); }
+});

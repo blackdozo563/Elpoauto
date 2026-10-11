@@ -243,7 +243,11 @@ func connectCapCut() throws -> NSRunningApplication {
 func focusedPid() -> pid_t? {
     var value: CFTypeRef?
     let code = AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute as CFString, &value)
-    guard code == .success, let v = value, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
+    guard code == .success, let v = value, CFGetTypeID(v) == AXUIElementGetTypeID() else {
+        // This attribute is absent in the user's real 0.7 diagnostic. Workspace
+        // supplies the fallback; bringToFront pumps the run loop after activation.
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier
+    }
     var pid: pid_t = 0
     guard AXUIElementGetPid(v as! AXUIElement, &pid) == .success else { return nil }
     return pid
@@ -254,7 +258,7 @@ func bringToFront(_ app: NSRunningApplication) -> Bool {
     let until = Date().addingTimeInterval(3)
     while Date() < until {
         if focusedPid() == app.processIdentifier { return true }
-        Thread.sleep(forTimeInterval: 0.05)
+        _ = RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
     }
     return false
 }
@@ -263,6 +267,15 @@ func displayBounds() -> [CGRect] {
     var count: UInt32 = 0
     guard CGGetActiveDisplayList(16, &ids, &count) == .success else { return [] }
     return ids.prefix(Int(count)).map { CGDisplayBounds($0) }
+}
+
+// A successful AX call is only a command result, never proof of an export.
+// Refuse the side effect if another app has taken focus since the fresh read.
+func pressInForeground(pid: pid_t, focus: () -> pid_t?, perform: () -> AXError) throws -> AXError {
+    guard focus() == pid else {
+        throw DriverFailure(code: "NOT_FRONTMOST", message: "CapCut n’est plus au premier plan. Aucun AXPress envoyé.")
+    }
+    return perform()
 }
 
 // ---- Pure rules, shared with lib/capcut-screen.js and checked by --self-test -----
@@ -363,6 +376,15 @@ func pressCommand(label: String, expectName: String?) -> [String: Any] {
             throw DriverFailure(code: "LABEL_REFUSED", message: "« \(label) » ne fait pas partie des commandes autorisées (ExportOkBtn, automationcancel, automationcloseBtn).")
         }
         let app = try connectCapCut()
+        r["focusedPIDBeforeActivation"] = focusedPid().map { Int($0) as Any } ?? NSNull()
+        guard bringToFront(app) else {
+            throw DriverFailure(code: "NOT_FRONTMOST", message: "CapCut n’a pas pu passer au premier plan. Aucun AXPress envoyé.")
+        }
+        _ = RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.3))
+        r["focusedPID"] = focusedPid().map { Int($0) as Any } ?? NSNull()
+        r["capcutPID"] = Int(app.processIdentifier)
+        // Locate the sheet and its control again AFTER activation, as in the
+        // standalone prototype. Never reuse a background AX element.
         let reader = NativeReader(pid: app.processIdentifier)
         let shot = reader.snapshot(scope: .sheet, seconds: 4, maxNodes: 50)
         guard shot.sheetsSeen == 1 else {
@@ -411,8 +433,10 @@ func pressCommand(label: String, expectName: String?) -> [String: Any] {
         // it): the 0.25 s read timeout would report a received press as a failure.
         _ = AXUIElementSetMessagingTimeout(button.element, 6)
         let began = Date()
-        let code = AXUIElementPerformAction(button.element, kAXPressAction as CFString)
-        r["commandAttempted"] = true
+        let code = try pressInForeground(pid: app.processIdentifier, focus: focusedPid) {
+            r["commandAttempted"] = true
+            return AXUIElementPerformAction(button.element, kAXPressAction as CFString)
+        }
         r["pressResult"] = errorName(code)
         r["pressMs"] = Date().timeIntervalSince(began) * 1000
         guard code == .success else {
@@ -531,6 +555,19 @@ func driverSelfTest() -> [String: Any] {
     expect(!pointAllowed(CGPoint(x: 1309, y: 47), windows: [window], screens: [screen]), "bord de fenêtre refusé")
     expect(!pointAllowed(CGPoint(x: 1400, y: 64), windows: [window], screens: [screen]), "hors fenêtre refusé")
     expect(!pointAllowed(CGPoint(x: 100, y: 100), windows: [CGRect(x: 1185, y: 690, width: 183, height: 88)], screens: [screen]), "bulle EditPilot ignorée")
+    var sends = 0
+    for pid in [nil, pid_t(2)] as [pid_t?] {
+        do {
+            _ = try pressInForeground(pid: 1, focus: { pid }) { sends += 1; return .success }
+            expect(false, "AXPress doit refuser un premier plan absent ou différent")
+        } catch let error as DriverFailure { expect(error.code == "NOT_FRONTMOST" && !error.attempted, "refus avant AXPress") }
+        catch { expect(false, "erreur de premier plan explicite") }
+    }
+    expect(sends == 0, "aucun envoi hors premier plan")
+    do {
+        let code = try pressInForeground(pid: 1, focus: { 1 }) { sends += 1; return .cannotComplete }
+        expect(code == .cannotComplete && sends == 1, "réponse incertaine conservée, un seul envoi")
+    } catch { expect(false, "commande au premier plan") }
     var r = baseResult("--self-test")
     r["ok"] = failures.isEmpty
     r["failures"] = failures
