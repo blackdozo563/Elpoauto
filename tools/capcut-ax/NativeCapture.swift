@@ -68,8 +68,17 @@ final class NativeCapture {
             return result
         }
         let app = apps[0], root = AXUIElementCreateApplication(app.processIdentifier)
+        // The system-wide element sets this process' default for every child
+        // AX call, not just reads addressed to the application root itself.
+        let globalTimeoutCode = AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.25)
         let timeoutCode = AXUIElementSetMessagingTimeout(root, 0.25)
-        result["messagingTimeout"] = ["seconds": 0.25, "code": Int(timeoutCode.rawValue)]
+        result["messagingTimeout"] = ["seconds": 0.25, "code": Int(timeoutCode.rawValue), "globalCode": Int(globalTimeoutCode.rawValue)]
+        guard globalTimeoutCode == .success, timeoutCode == .success else {
+            result["ok"] = false; result["complete"] = false
+            result["error"] = "Impossible de borner le délai des appels AX ; lecture interrompue."
+            result["ms"] = Date().timeIntervalSince(began) * 1000
+            return result
+        }
         result["capcut"] = ["pid": Int(app.processIdentifier), "bundle": app.bundleIdentifier ?? "",
                             "path": app.bundleURL?.path ?? "", "version": app.bundleURL.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String } ?? ""]
         result["frontmostPID"] = NSWorkspace.shared.frontmostApplication.map { Int($0.processIdentifier) as Any } ?? NSNull()
