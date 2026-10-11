@@ -1,36 +1,30 @@
-# capcut-ax record — relevés avant la refonte du pilote
+# capcut-ax — l’outil natif du pilote CapCut
 
-Étape préalable demandée : enregistrer un cycle **manuel** CapCut 9.3.0 avec un projet de **5 secondes**. Ce relevé prépare le pilote ; ce n’est aucun des deux essais automatiques (un projet, puis trois projets). Aucune release publique.
+Outil Swift qui lit et commande CapCut 9.3.0 par les API d’accessibilité de macOS. Il est embarqué dans ElpoAiAutoCapcut (`Contents/MacOS/capcut-ax`, compilé par `npm run build:native`) et lancé par l’application, dont il utilise l’autorisation Accessibilité. Aucune lecture JXA/System Events, aucune coordonnée calibrée, jamais la touche Entrée.
 
-## Sans Terminal
+Chaque commande répond **un** objet JSON sur la sortie standard. Code de sortie : `0` fait, `3` refusé avant tout envoi à CapCut, `4` envoyé mais résultat incertain. `commandAttempted` dit si quelque chose a été envoyé à CapCut.
 
-1. Décompresse l’archive et copie **capcut-ax.app** dans Applications. Ouvre cette copie. Si macOS bloque cette app à signature ad hoc, utilise Confidentialité et sécurité → Ouvrir quand même.
-2. Clique **Autoriser l’Accessibilité de capcut-ax** et active cette app dans les réglages. Son autorisation est distincte de celle d’ELPO et de l’ancien prototype.
-3. Dans CapCut, prépare un projet vidéo de 5 secondes avec un nom unique, par exemple **AX-CYCLE-5S**, puis reviens sur Accueil. Ferme ELPO pour qu’aucun autre pilote n’agisse pendant le relevé.
-4. Dans capcut-ax, clique **Démarrer l’enregistrement**. Tu peux réduire sa fenêtre ; il continue à observer.
-5. Dans CapCut, fais toi-même le cycle suivant : **Accueil → ouvrir le projet → ouvrir les réglages d’export → Exporter → attendre la fin → fermer le panneau de résultat**. Utilise MP4 et un fichier de sortie neuf. Reste environ deux secondes sur Accueil, dans l’éditeur, dans les réglages et sur le résultat pour conserver plusieurs relevés de chaque étape. Ne quitte pas CapCut avant la fin de l’enregistrement.
-6. Reviens dans capcut-ax et clique **Terminer l’enregistrement**, puis **Afficher le ZIP à envoyer**. Envoie le ZIP `capcut-record-….zip`. Il contient `record.json` et **tous** les relevés horodatés dans `frames.jsonl`.
+## Commandes du pilote
 
-L’enregistrement dure au maximum trois minutes par défaut. Fermer ou quitter l’enregistreur pendant le cycle demande sa finalisation, sans interrompre CapCut. Les fichiers sont dans `~/Library/Application Support/CapCutAX/Enregistrements`. Les relevés contiennent les noms et chemins exposés par CapCut ; aucun envoi réseau automatique.
+| Commande | Effet |
+|---|---|
+| `snapshot [--scope sheet] [--budget s]` | Lecture native : fenêtres (les plus grandes d’abord), feuille modale lue entièrement en premier, puis la page. Même format de nœuds que `state` et que les relevés `record` (`path`, `role`, `title`, `description`, `identifier`, `value`, `frame`, `enabled`, `actions`). `--scope sheet` ne lit que la feuille (pendant l’encodage). `sheetComplete` dit si la feuille a été lue sans erreur. |
+| `press --label L [--expect-name N]` | AXPress sur **un** bouton d’une liste blanche, retrouvé dans une lecture fraîche de la feuille : `ExportOkBtn` (vue des réglages ; `--expect-name` obligatoire : le fichier annoncé doit être `N.mp4` ou `N(1).mp4`), `automationcancel` (vue des réglages uniquement, jamais pendant un export), `automationcloseBtn` (panneau de fin). Tout autre libellé est refusé (`LABEL_REFUSED`), dont `publish_pc_btn` (« Partager »). |
+| `click --x X --y Y --expect L [--double] [--strict]` | Clic souris à un point calculé par ELPO depuis le cadre que CapCut donne pour le contrôle `L`. Vérifié avant : CapCut seul et au premier plan, point dans une fenêtre CapCut et sur un écran, aucune feuille ouverte, élément sous le point appartenant à CapCut (hit-test AX). `hitVerified` dit si `L` a été retrouvé sous le point (`--strict` l’exige). Sert à la vignette du projet (double-clic) et à « Exporter » de l’éditeur, qui n’annoncent pas AXPress dans CapCut 9.3.0. |
+| `--self-test` | Contrôles purs : noms annoncés, liste blanche, zone de clic. Aucun appel à CapCut. |
 
-## Ligne de commande
+Les décisions (quel écran, quelle vignette, fin de l’export) sont prises par `lib/capcut-screen.js` et `lib/capcut-pilot.js`, testées sur le relevé réel `tests/fixtures/capcut-9.3.0-cycle.json`.
 
-```sh
-"/Applications/capcut-ax.app/Contents/MacOS/capcut-ax" state
-"/Applications/capcut-ax.app/Contents/MacOS/capcut-ax" record --seconds 180
-```
+## Observation (inchangée)
 
-`state` retourne un JSON avec les fenêtres, nœuds AX, rôles, identifiants, descriptions, valeurs, cadres en points macOS, actions annoncées, codes d’erreur et durées. Le budget de lecture est de 850 ms, avec un timeout natif de 250 ms par appel : la réponse vise environ une seconde, sans masquer un dépassement. `complete: false` et `incompleteReasons` rendent les lectures partielles explicites. Une lecture partielle ne confirme jamais l’absence d’un contrôle.
+- `state` : observation complète, chaque nœud et chaque lecture AX, pour un diagnostic.
+- `record [--seconds N] [--output dossier]` : petit panneau qui enregistre un relevé par seconde pendant un cycle manuel dans CapCut, puis un ZIP à envoyer. Observation seule. Compilé en application autonome par `bash tools/capcut-ax/build.sh` (autorisation Accessibilité distincte de celle d’ELPO).
 
-`record` ouvre le petit panneau de contrôle de l’enregistrement et émet immédiatement un accusé JSON `event: pret`. Après démarrage dans ce panneau, il observe sans chevauchement environ une fois par seconde et conserve chaque relevé. Sa sortie est un flux JSON par ligne : prêt, démarrage, résultat final. `--output dossier` change uniquement le dossier des relevés, pas celui de CapCut.
+## Identifiants CapCut 9.3.0 relevés le 11 octobre 2026
 
-**Aucun AXPress, événement souris, raccourci, Entrée, activation, fermeture, décodage de média ou écriture dans les projets CapCut.** L’outil ne fait aucune lecture JXA/System Events. Les actions `open-project`, `open-export`, `press-export` et `close-done` seront implémentées et vérifiées contre ces relevés avant les essais automatiques. Pour l’instant, elles retournent une erreur JSON sans agir.
-
-## Contrat prévu pour le pilote
-
-- Base : `codex/capcut-ax-prototype`. Conserver le moteur, le rendu, la file, l’interface, `bumpProject` et les protections `quit`/`forceClose`.
-- Remplacer le chemin d’export par des actions natives suivies de l’état attendu sous un délai précis ; erreur avec relevé sinon.
-- Bouton final : AXPress annoncé, sinon coordonnées AX relues et hit-test vérifié. Aucun second clic incertain, aucun point calibré, jamais Entrée.
-- Fin : fichier MP4 **annoncé** nouvellement apparu et durée ffprobe cohérente avec le projet. La progression native n’est qu’un affichage. Aucun décodage intégral.
-- Après la fin validée : fermeture native du résultat, `quit` existant, relance, projet suivant.
-- Deux essais automatiques prévus : un projet, puis trois. Aucune release publique avant le lot de trois réussi.
+- Accueil : `HomePageDraft` (vignette, 134×174, sans AXPress), `HomePageDraftTitle:<nom>` (seulement si la vignette est entièrement visible), `HomePageStartProjectDesp`.
+- Éditeur : `MainWindowTitleBarExportBtn` (texte dans la barre de titre de CapCut, sans AXPress), `totalProgress|hh:mm:ss:ff`, `MainTimeLineRoot`.
+- Feuille d’export, réglages : `ExportDialog`, `ExportFileNameInput`, `ExportPathInput`, chemin complet du fichier, `automationcancel`, `ExportOkBtn` (AXButton, AXPress).
+- Même feuille, export : « Exportation », `ExportProgress:38.4%` … `97.4%` (jamais 100 %), un bouton sans nom (annulation : jamais pressé).
+- Même feuille, fin : `automationopenFolderBtn`, `publish_pc_btn`, `automationcloseBtn` (AXPress).
+- Pendant un changement de page, CapCut répond `cannotComplete` à une lecture.

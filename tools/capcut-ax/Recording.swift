@@ -144,3 +144,47 @@ final class RecorderApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
+
+// Moved from main.swift, unchanged, so that main.swift only dispatches commands.
+var recorderDelegate: RecorderApp?
+func runRecorder(arguments: [String]) -> Never {
+    func recorderOption(_ key: String) -> String? {
+        guard let index = arguments.firstIndex(of: key), index + 1 < arguments.count else { return nil }; return arguments[index + 1]
+    }
+    let seconds = Double(recorderOption("--seconds") ?? "180") ?? 0
+    guard seconds >= 10, seconds <= 1800 else {
+        emit(["ok": false, "error": "--seconds doit être entre 10 et 1800.", "commandAttempted": false]); exit(2)
+    }
+    let defaultParent = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("CapCutAX/Enregistrements", isDirectory: true)
+    let parent = recorderOption("--output").map { URL(fileURLWithPath: $0, isDirectory: true) } ?? defaultParent
+    let application = NSApplication.shared, delegate = RecorderApp(parent: parent, seconds: seconds)
+    recorderDelegate = delegate
+    application.setActivationPolicy(.regular); application.delegate = delegate
+    let menu = NSMenu(), submenu = NSMenu(), item = NSMenuItem()
+    submenu.addItem(withTitle: "Quitter capcut-ax", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    item.submenu = submenu; menu.addItem(item); application.mainMenu = menu
+    application.run()
+    exit(0)
+}
+
+// Technical verification of file writing and ZIP finalization only. No CapCut
+// actions, and no claim of a functional export.
+func recordSelfTest() -> Never {
+    let parent = FileManager.default.temporaryDirectory.appendingPathComponent("capcut-record-self-test-\(UUID().uuidString)")
+    let recording = Recording(parent: parent, seconds: 2)
+    recording.run()
+    do {
+        let manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: recording.folder.appendingPathComponent("record.json"))) as! [String: Any]
+        let lines = try String(contentsOf: recording.folder.appendingPathComponent("frames.jsonl"), encoding: .utf8).split(separator: "\n")
+        guard manifest["status"] as? String == "releves_enregistres_sans_action",
+              manifest["count"] as? Int == lines.count, lines.count > 0,
+              FileManager.default.fileExists(atPath: recording.folder.appendingPathExtension("zip").path) else { exit(1) }
+        for (index, line) in lines.enumerated() {
+            let frame = try JSONSerialization.jsonObject(with: Data(line.utf8)) as! [String: Any]
+            guard frame["index"] as? Int == index, frame["observationOnly"] as? Bool == true,
+                  frame["commandAttempted"] as? Bool == false else { exit(1) }
+        }
+        try FileManager.default.removeItem(at: parent)
+    } catch { fputs("\(error)\n", stderr); exit(1) }
+    exit(0)
+}

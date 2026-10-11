@@ -5,7 +5,7 @@ output=dist/capcut-ax-record
 bundle="$output/capcut-ax.app"
 mkdir -p "$bundle/Contents/MacOS"
 xcrun swiftc -swift-version 5 -O -target arm64-apple-macos12.0 \
-  tools/capcut-ax/NativeCapture.swift tools/capcut-ax/Recording.swift tools/capcut-ax/main.swift \
+  tools/capcut-ax/NativeCapture.swift tools/capcut-ax/Recording.swift tools/capcut-ax/Driver.swift tools/capcut-ax/main.swift \
   -o "$bundle/Contents/MacOS/capcut-ax"
 cp tools/capcut-ax/Info.plist "$bundle/Contents/Info.plist"
 codesign --force --sign - "$bundle"

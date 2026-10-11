@@ -1,38 +1,52 @@
-name: capcut-ax record (relevés seulement, aucune release)
+name: capcut-ax (outil natif du pilote, aucune release)
 on:
   push:
-    branches: ['codex/capcut-ax-prototype']
+    branches: ['codex/capcut-ax-prototype', 'codex/pilote-natif-0.7']
     paths: ['tools/capcut-ax/**', '.github/workflows/capcut-ax-record.yml']
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  record:
+  native:
     runs-on: macos-14
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Compiler et signer l’enregistreur ARM64
+      - name: Compiler l’outil du pilote et l’enregistreur ARM64
         run: |
           test "$(uname -m)" = arm64
+          node scripts/ci-command.cjs bash tools/capcut-ax/build-helper.sh
           node scripts/ci-command.cjs bash tools/capcut-ax/build.sh
-      - name: Vérifier le JSON sans CapCut et sans commande envoyée
+      - name: Contrôles purs (noms annoncés, liste blanche, zone de clic)
+        run: build/native/capcut-ax --self-test > dist/capcut-ax-record/controles-purs.json
+      - name: Aucune action sans CapCut ni autorisation
+        run: |
+          set +e
+          H=build/native/capcut-ax
+          $H snapshot > /tmp/snapshot.json; test $? -eq 3 || exit 1
+          $H press --label ExportOkBtn --expect-name TESTO > /tmp/press.json; test $? -eq 3 || exit 1
+          $H press --label publish_pc_btn > /tmp/refus.json; test $? -eq 3 || exit 1
+          $H click --x 300 --y 400 --expect HomePageDraft --double > /tmp/click.json; test $? -eq 3 || exit 1
+          set -e
+          python3 - <<'PY'
+          import json
+          for name in ('snapshot', 'press', 'refus', 'click'):
+              d = json.load(open(f'/tmp/{name}.json'))
+              assert d['ok'] is False and d['commandAttempted'] is False, (name, d)
+          assert json.load(open('/tmp/refus.json'))['code'] == 'LABEL_REFUSED'
+          PY
+      - name: Enregistreur (inchangé) — observation seule
         run: |
           "dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" state > dist/capcut-ax-record/state-sans-capcut.json
           python3 -c 'import json; d=json.load(open("dist/capcut-ax-record/state-sans-capcut.json")); assert d["observationOnly"] and not d["commandAttempted"] and d["runningInstances"] == 0 and not d["ok"]'
-      - name: Vérifier que les actions attendent les relevés
-        run: |
-          if "dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" press-export > /tmp/action-refusee.json; then exit 1; fi
-          python3 -c 'import json; d=json.load(open("/tmp/action-refusee.json")); assert not d["ok"] and not d["commandAttempted"]'
-      - name: Ouvrir le panneau sans enregistrer ni agir
-        run: '"dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" --smoke-ui > dist/capcut-ax-record/interface.json'
-      - name: Vérifier l’écriture des relevés et la finalisation du ZIP sans CapCut
-        run: '"dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" --record-self-test > dist/capcut-ax-record/verification-enregistrement.json'
+          "dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" --smoke-ui > dist/capcut-ax-record/interface.json
+          "dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" --record-self-test > dist/capcut-ax-record/verification-enregistrement.json
       - uses: actions/upload-artifact@v4
         with:
-          name: capcut-ax-record-arm64
+          name: capcut-ax-arm64
           if-no-files-found: error
           path: |
+            build/native/capcut-ax
             dist/capcut-ax-record/*.zip
             dist/capcut-ax-record/*.md
             dist/capcut-ax-record/*.json
