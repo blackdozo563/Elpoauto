@@ -104,6 +104,10 @@ final class RecorderApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         show.target = self; show.action = #selector(reveal)
         finish.isEnabled = false; show.isEnabled = false
         window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        if !CommandLine.arguments.contains("--smoke-ui") {
+            emit(["ok": true, "command": "record", "event": "pret", "outputRoot": parent.path,
+                  "observationOnly": true, "commandAttempted": false, "requiresStart": true])
+        }
         if CommandLine.arguments.contains("--smoke-ui") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 emit(["uiLoaded": true, "commandAttempted": false]); NSApp.terminate(nil)
@@ -119,6 +123,8 @@ final class RecorderApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard !running, recorder == nil else { return }
         guard AXIsProcessTrusted() else { status.stringValue = "Active capcut-ax dans Accessibilité, puis reviens démarrer l’enregistrement."; return }
         let recording = Recording(parent: parent, seconds: seconds); recorder = recording
+        emit(["ok": true, "command": "record", "event": "demarrage", "folder": recording.folder.path,
+              "observationOnly": true, "commandAttempted": false])
         running = true; start.isEnabled = false; finish.isEnabled = true
         recording.update = { [weak self] message in DispatchQueue.main.async { self?.status.stringValue = message } }
         recording.completed = { [weak self] url, message in DispatchQueue.main.async {

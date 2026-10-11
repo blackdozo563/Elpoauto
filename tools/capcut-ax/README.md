@@ -22,7 +22,7 @@ L’enregistrement dure au maximum trois minutes par défaut. Fermer ou quitter 
 
 `state` retourne un JSON avec les fenêtres, nœuds AX, rôles, identifiants, descriptions, valeurs, cadres en points macOS, actions annoncées, codes d’erreur et durées. Le budget de lecture est de 850 ms, avec un timeout natif de 250 ms par appel : la réponse vise environ une seconde, sans masquer un dépassement. `complete: false` et `incompleteReasons` rendent les lectures partielles explicites. Une lecture partielle ne confirme jamais l’absence d’un contrôle.
 
-`record` ouvre le petit panneau de contrôle de l’enregistrement, observe sans chevauchement environ une fois par seconde et conserve chaque relevé. `--output dossier` change uniquement le dossier des relevés, pas celui de CapCut.
+`record` ouvre le petit panneau de contrôle de l’enregistrement et émet immédiatement un accusé JSON `event: pret`. Après démarrage dans ce panneau, il observe sans chevauchement environ une fois par seconde et conserve chaque relevé. Sa sortie est un flux JSON par ligne : prêt, démarrage, résultat final. `--output dossier` change uniquement le dossier des relevés, pas celui de CapCut.
 
 **Aucun AXPress, événement souris, raccourci, Entrée, activation, fermeture, décodage de média ou écriture dans les projets CapCut.** L’outil ne fait aucune lecture JXA/System Events. Les actions `open-project`, `open-export`, `press-export` et `close-done` seront implémentées et vérifiées contre ces relevés avant les essais automatiques. Pour l’instant, elles retournent une erreur JSON sans agir.
 

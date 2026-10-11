@@ -86,11 +86,12 @@ final class NativeCapture {
                 queues.append((element, path, nil, 0, w, nil, false))
             }
             // Prefer the main-sized windows, retaining every window in the report.
-            queues.sort { a, b in
-                let fa = windows[a.4]["frame"] as? [String: Double] ?? [:]
-                let fb = windows[b.4]["frame"] as? [String: Double] ?? [:]
-                return (fa["width"] ?? 0) * (fa["height"] ?? 0) > (fb["width"] ?? 0) * (fb["height"] ?? 0)
+            let areas: [Double] = windows.map { window in
+                let frame = window["frame"] as? [String: Double] ?? [:]
+                let width = frame["width"] ?? 0, height = frame["height"] ?? 0
+                return width * height
             }
+            queues.sort { areas[$0.4] > areas[$1.4] }
             while index < queues.count {
                 guard Date() < deadline else { throw CaptureError.budget }
                 if nodeCount >= 1500 { incomplete.insert("limite_noeuds"); break }
