@@ -23,7 +23,7 @@ case "state":
 case "snapshot":
     finish(snapshotCommand(scope: option("--scope") == "sheet" ? .sheet : .all, seconds: Double(option("--budget") ?? "") ?? 3))
 case "press":
-    finish(pressCommand(label: option("--label") ?? "", expectName: option("--expect-name")))
+    finish(pressCommand(label: option("--label") ?? "", expectName: option("--expect-name"), mouse: args.contains("--mouse")))
 case "click":
     finish(clickCommand(x: Double(option("--x") ?? "") ?? .nan, y: Double(option("--y") ?? "") ?? .nan,
                         double: args.contains("--double"), expect: option("--expect") ?? "", strict: args.contains("--strict")))
@@ -33,6 +33,7 @@ case "record", "--smoke-ui":
     runRecorder(arguments: args)
 case "--version":
     emit(["tool": "capcut-ax", "schema": 2, "phase": "pilote_natif",
+          "exportMethod": "CGEvent-validated-single",
           "availableCommands": ["snapshot", "press", "click", "state", "record", "--self-test"],
           "pressable": pressableControls.keys.sorted(), "commandAttempted": false])
 default:

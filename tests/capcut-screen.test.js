@@ -18,6 +18,19 @@ test('diagnostic réel 0.7 : AXPress accepté ne prouve pas le démarrage de l�
   assert.equal(screen.frontmost, false);
 });
 
+test('diagnostic réel corrigé : deux AXPress success au premier plan, réglages toujours affichés', () => {
+  const diagnostic = JSON.parse(fs.readFileSync(new URL('./fixtures/capcut-0.7-foreground-press-no-effect.json', import.meta.url)));
+  assert.equal(diagnostic.commands.length, 2);
+  for (const { result } of diagnostic.commands) {
+    assert.equal(result.focusedPID, result.capcutPID);
+    assert.equal(result.pressResult, 'success');
+    assert.equal(result.control.role, 'AXButton');
+    assert.equal(result.commandAttempted, true);
+    assert.deepEqual(center(result.control.frame), { x: 1028, y: 711 });
+  }
+  assert.equal(readScreen(diagnostic.snapshot).screen, 'export-settings');
+});
+
 test('relevé réel : chaque page du cycle est reconnue', () => {
   const expected = {
     home: 'home', 'busy-opening': 'busy', 'editor-loading': 'busy', editor: 'editor', 'busy-sheet': 'busy',

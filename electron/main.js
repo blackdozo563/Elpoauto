@@ -71,7 +71,13 @@ function makeDriver() {
     try { return await fn(); }
     finally { if (shown && hudState && hud && !hud.isDestroyed()) hud.showInactive(); }
   };
-  return { ...base, press: args => withoutHud(() => base.press(args)), click: async args => {
+  return { ...base, press: async args => {
+    if (args.mouse) automated = { at: Date.now(), until: Date.now() + 20000 };
+    try { return await withoutHud(() => base.press(args)); }
+    finally {
+      if (args.mouse) automated = { ...screen.getCursorScreenPoint(), at: Date.now(), until: Date.now() + 1500 };
+    }
+  }, click: async args => {
     automated = { x: Math.round(args.x), y: Math.round(args.y), at: Date.now(), until: Date.now() + 8000 };
     const hudShown = !!hud && !hud.isDestroyed() && hud.isVisible();
     if (hudShown) hud.hide();

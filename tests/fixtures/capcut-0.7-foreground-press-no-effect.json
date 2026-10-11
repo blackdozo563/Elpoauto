@@ -1,0 +1,2155 @@
+{
+  "source": "Diagnostic réel du 11 octobre 2026, deux AXPress sans effet au premier plan; aucun export réussi attesté.",
+  "commands": [
+    {
+      "at": "2026-10-11T09:41:32.259Z",
+      "args": [
+        "press",
+        "--label",
+        "ExportOkBtn",
+        "--expect-name",
+        "projet 1-30sec"
+      ],
+      "durationMs": 394,
+      "result": {
+        "at": "2026-10-11T09:41:32Z",
+        "capcutPID": 94274,
+        "command": "press",
+        "commandAttempted": true,
+        "control": {
+          "actions": [
+            "AXPress",
+            "AXRaise"
+          ],
+          "frame": {
+            "height": 28,
+            "width": 72,
+            "x": 992,
+            "y": 697
+          },
+          "role": "AXButton"
+        },
+        "focusedPID": 94274,
+        "focusedPIDBeforeActivation": 94274,
+        "label": "ExportOkBtn",
+        "ok": true,
+        "pressMs": 0.09894371032714844,
+        "pressResult": "success",
+        "schema": 2,
+        "target": "/Users/demo/Desktop/projet 1-30sec.mp4",
+        "tool": "capcut-ax",
+        "view": "settings"
+      }
+    },
+    {
+      "at": "2026-10-11T09:41:41.662Z",
+      "args": [
+        "press",
+        "--label",
+        "ExportOkBtn",
+        "--expect-name",
+        "projet 1-30sec"
+      ],
+      "durationMs": 399,
+      "result": {
+        "at": "2026-10-11T09:41:41Z",
+        "capcutPID": 94274,
+        "command": "press",
+        "commandAttempted": true,
+        "control": {
+          "actions": [
+            "AXPress",
+            "AXRaise"
+          ],
+          "frame": {
+            "height": 28,
+            "width": 72,
+            "x": 992,
+            "y": 697
+          },
+          "role": "AXButton"
+        },
+        "focusedPID": 94274,
+        "focusedPIDBeforeActivation": 94274,
+        "label": "ExportOkBtn",
+        "ok": true,
+        "pressMs": 0.1900196075439453,
+        "pressResult": "success",
+        "schema": 2,
+        "target": "/Users/demo/Desktop/projet 1-30sec.mp4",
+        "tool": "capcut-ax",
+        "view": "settings"
+      }
+    }
+  ],
+  "snapshot": {
+    "at": "2026-10-11T09:43:18Z",
+    "calls": 996,
+    "capcut": {
+      "path": "/Applications/CapCut.app",
+      "pid": 94274,
+      "version": "9.3.0"
+    },
+    "command": "snapshot",
+    "commandAttempted": false,
+    "complete": true,
+    "focusedPID": 94249,
+    "frontmost": false,
+    "incompleteReasons": [],
+    "ms": 184.4710111618042,
+    "nodesRead": 108,
+    "ok": true,
+    "runningInstances": 1,
+    "schema": 2,
+    "scope": "all",
+    "sheetComplete": true,
+    "sheetsSeen": 1,
+    "tool": "capcut-ax",
+    "trusted": true,
+    "windows": [
+      {
+        "frame": {
+          "height": 88,
+          "width": 183,
+          "x": 1185,
+          "y": 690
+        },
+        "main": false,
+        "nodes": [],
+        "path": "window/0",
+        "title": ""
+      },
+      {
+        "frame": {
+          "height": 720,
+          "width": 1280,
+          "x": 80,
+          "y": 46
+        },
+        "main": true,
+        "nodes": [
+          {
+            "actions": [],
+            "description": "",
+            "enabled": null,
+            "frame": {
+              "height": 720,
+              "width": 1280,
+              "x": 80,
+              "y": 46
+            },
+            "identifier": "",
+            "parent": null,
+            "path": "window/1",
+            "role": "AXWindow",
+            "sheet": false,
+            "title": "CapCut",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "",
+            "enabled": null,
+            "frame": {
+              "height": 663,
+              "width": 720,
+              "x": 360,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/73",
+            "role": "AXSheet",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportFileNameInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 240,
+              "x": 824,
+              "y": 191
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/0",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportPathInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 210,
+              "x": 824,
+              "y": 228
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/1",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "/Users/demo/Desktop/projet 1-30sec.mp4",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 194,
+              "x": 832,
+              "y": 228
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/2",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": "/Users/demo/Desktop/projet 1-30sec.mp4"
+          },
+          {
+            "actions": [
+              "AXPress",
+              "AXRaise"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 22,
+              "x": 1038,
+              "y": 228
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/3",
+            "role": "AXButton",
+            "sheet": true,
+            "title": "ExportFileNameInputBtn",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "automation",
+            "enabled": true,
+            "frame": {
+              "height": 398,
+              "width": 328,
+              "x": 720,
+              "y": 283
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/4",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportSharpnessInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 224,
+              "x": 824,
+              "y": 321
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/5",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportSharpnessInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 224,
+              "x": 824,
+              "y": 321
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/6",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportbitRateInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 224,
+              "x": 824,
+              "y": 359
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/7",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportbitRateInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 224,
+              "x": 824,
+              "y": 359
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/8",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportEncoderInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 224,
+              "x": 824,
+              "y": 397
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/9",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportEncoderInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 224,
+              "x": 824,
+              "y": 397
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/10",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportFormatInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 224,
+              "x": 824,
+              "y": 435
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/11",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportFormatInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 224,
+              "x": 824,
+              "y": 435
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/12",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "FrameRateInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 224,
+              "x": 824,
+              "y": 473
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/13",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "FrameRateInput",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 224,
+              "x": 824,
+              "y": 473
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/14",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "automationcompleteFrameCheckBtn",
+            "enabled": true,
+            "frame": {
+              "height": 16,
+              "width": 36,
+              "x": 1012,
+              "y": 537
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/15",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXPress",
+              "AXPress",
+              "AXRaise"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 253,
+              "x": 720,
+              "y": 714
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/16",
+            "role": "AXCheckBox",
+            "sheet": true,
+            "title": "automationbackupCheckBox",
+            "value": 1
+          },
+          {
+            "actions": [
+              "AXIncrement",
+              "AXDecrement",
+              "AXRaise",
+              "AXIncrement",
+              "AXDecrement"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 368,
+              "width": 10,
+              "x": 1054,
+              "y": 283
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/17",
+            "role": "AXScrollBar",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportInfoItem",
+            "enabled": true,
+            "frame": {
+              "height": 54,
+              "width": 512,
+              "x": 400,
+              "y": 684
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/18",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXPress",
+              "AXRaise"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 28,
+              "width": 72,
+              "x": 912,
+              "y": 697
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/19",
+            "role": "AXButton",
+            "sheet": true,
+            "title": "automationcancel",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXPress",
+              "AXRaise"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 28,
+              "width": 72,
+              "x": 992,
+              "y": 697
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/20",
+            "role": "AXButton",
+            "sheet": true,
+            "title": "ExportOkBtn",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportDialog",
+            "enabled": true,
+            "frame": {
+              "height": 663,
+              "width": 720,
+              "x": 360,
+              "y": 75
+            },
+            "identifier": "",
+            "parent": "window/1/73",
+            "path": "window/1/73/21",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportFileNameInputBtn",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 22,
+              "x": 1038,
+              "y": 228
+            },
+            "identifier": "",
+            "parent": "window/1/73/3",
+            "path": "window/1/73/3/0",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportFileNameInputBtn",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 22,
+              "x": 1038,
+              "y": 228
+            },
+            "identifier": "",
+            "parent": "window/1/73/3",
+            "path": "window/1/73/3/1",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "automationbackupCheckBox",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 253,
+              "x": 720,
+              "y": 714
+            },
+            "identifier": "",
+            "parent": "window/1/73/16",
+            "path": "window/1/73/16/0",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "automationcancel",
+            "enabled": true,
+            "frame": {
+              "height": 28,
+              "width": 72,
+              "x": 912,
+              "y": 697
+            },
+            "identifier": "",
+            "parent": "window/1/73/19",
+            "path": "window/1/73/19/0",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportOkBtn",
+            "enabled": true,
+            "frame": {
+              "height": 28,
+              "width": 72,
+              "x": 992,
+              "y": 697
+            },
+            "identifier": "",
+            "parent": "window/1/73/20",
+            "path": "window/1/73/20/0",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "ExportOkBtn",
+            "enabled": true,
+            "frame": {
+              "height": 28,
+              "width": 72,
+              "x": 992,
+              "y": 697
+            },
+            "identifier": "",
+            "parent": "window/1/73/20",
+            "path": "window/1/73/20/1",
+            "role": "AXStaticText",
+            "sheet": true,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXPress",
+              "AXRaise"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 59,
+              "x": 1119,
+              "y": 53
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/0",
+            "role": "AXButton",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "MainWindowTitleBarExportBtn",
+            "enabled": true,
+            "frame": {
+              "height": 22,
+              "width": 77,
+              "x": 1271,
+              "y": 53
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/1",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "root_Multimédia",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 52,
+              "x": 93,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/2",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "root_Son",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 40,
+              "x": 154,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/3",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "root_Texte",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 40,
+              "x": 203,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/4",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "root_Stickers",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 40,
+              "x": 252,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/5",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "root_Effets",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 40,
+              "x": 301,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/6",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "root_Transitions",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 51,
+              "x": 350,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/7",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "root_Légendes",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 45,
+              "x": 410,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/8",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "root_Filtres",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 40,
+              "x": 465,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/9",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "root_Ajustement",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 53,
+              "x": 514,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/10",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "root_Avatar IA",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 42,
+              "x": 577,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/11",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXIncrement",
+              "AXDecrement",
+              "AXRaise",
+              "AXIncrement",
+              "AXDecrement"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 10,
+              "x": 483,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/12",
+            "role": "AXScrollBar",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "Importer",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 104,
+              "x": 97,
+              "y": 139
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/13",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "VETreeMainCellItem:Importer",
+            "enabled": true,
+            "frame": {
+              "height": 13,
+              "width": 72,
+              "x": 105,
+              "y": 145
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/14",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": "VETreeMainCellItem:Importer"
+          },
+          {
+            "actions": [],
+            "description": "Les tiennes",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 104,
+              "x": 97,
+              "y": 171
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/15",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "VETreeMainCellItem:Les tiennes",
+            "enabled": true,
+            "frame": {
+              "height": 13,
+              "width": 72,
+              "x": 105,
+              "y": 177
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/16",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": "VETreeMainCellItem:Les tiennes"
+          },
+          {
+            "actions": [],
+            "description": "Générer",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 104,
+              "x": 97,
+              "y": 203
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/17",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "VETreeMainCellItem:Générer",
+            "enabled": true,
+            "frame": {
+              "height": 13,
+              "width": 72,
+              "x": 105,
+              "y": 209
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/18",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": "VETreeMainCellItem:Générer"
+          },
+          {
+            "actions": [],
+            "description": "Espaces",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 104,
+              "x": 97,
+              "y": 235
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/19",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "VETreeMainCellItem:Espaces",
+            "enabled": true,
+            "frame": {
+              "height": 13,
+              "width": 72,
+              "x": 105,
+              "y": 241
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/20",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": "VETreeMainCellItem:Espaces"
+          },
+          {
+            "actions": [],
+            "description": "Bibliothèque",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 104,
+              "x": 97,
+              "y": 267
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/21",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "VETreeMainCellItem:Bibliothèque",
+            "enabled": true,
+            "frame": {
+              "height": 13,
+              "width": 72,
+              "x": 105,
+              "y": 273
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/22",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": "VETreeMainCellItem:Bibliothèque"
+          },
+          {
+            "actions": [],
+            "description": "Dreamina",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 104,
+              "x": 97,
+              "y": 299
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/23",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "VETreeMainCellItem:Dreamina",
+            "enabled": true,
+            "frame": {
+              "height": 13,
+              "width": 88,
+              "x": 105,
+              "y": 305
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/24",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": "VETreeMainCellItem:Dreamina"
+          },
+          {
+            "actions": [
+              "AXIncrement",
+              "AXDecrement",
+              "AXRaise",
+              "AXIncrement",
+              "AXDecrement"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 296,
+              "width": 10,
+              "x": 199,
+              "y": 136
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/25",
+            "role": "AXScrollBar",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "VECollectTitleView:",
+            "enabled": true,
+            "frame": {
+              "height": 0,
+              "width": 259,
+              "x": 222,
+              "y": 188
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/26",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": "VECollectTitleView:"
+          },
+          {
+            "actions": [],
+            "description": "automationroot",
+            "enabled": true,
+            "frame": {
+              "height": 80,
+              "width": 120,
+              "x": 222,
+              "y": 188
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/27",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "MediaInfoViewContentView",
+            "enabled": true,
+            "frame": {
+              "height": 80,
+              "width": 120,
+              "x": 222,
+              "y": 188
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/28",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "automationroot",
+            "enabled": true,
+            "frame": {
+              "height": 80,
+              "width": 120,
+              "x": 358,
+              "y": 188
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/29",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "MediaInfoViewContentView",
+            "enabled": true,
+            "frame": {
+              "height": 80,
+              "width": 120,
+              "x": 358,
+              "y": 188
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/30",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "automationroot",
+            "enabled": true,
+            "frame": {
+              "height": 80,
+              "width": 120,
+              "x": 222,
+              "y": 300
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/31",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "MediaInfoViewContentView",
+            "enabled": true,
+            "frame": {
+              "height": 80,
+              "width": 120,
+              "x": 222,
+              "y": 300
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/32",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXIncrement",
+              "AXDecrement",
+              "AXRaise",
+              "AXIncrement",
+              "AXDecrement"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 215,
+              "width": 10,
+              "x": 483,
+              "y": 188
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/33",
+            "role": "AXScrollBar",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "barImportViewBtn_",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 72,
+              "x": 222,
+              "y": 136
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/34",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXPress",
+              "AXRaise"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 360,
+              "y": 136
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/35",
+            "role": "AXButton",
+            "sheet": false,
+            "title": "automation",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXPress",
+              "AXRaise"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 32,
+              "x": 393,
+              "y": 136
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/36",
+            "role": "AXButton",
+            "sheet": false,
+            "title": "automationmaterial_order_btn",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXPress",
+              "AXRaise"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 32,
+              "x": 434,
+              "y": 136
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/37",
+            "role": "AXButton",
+            "sheet": false,
+            "title": "automationmaterial_filter_btn",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "currentProgress|00:00:00:00",
+            "enabled": true,
+            "frame": {
+              "height": 13,
+              "width": 64,
+              "x": 508,
+              "y": 416
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/38",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": "currentProgress"
+          },
+          {
+            "actions": [],
+            "description": "totalProgress|00:00:30:02",
+            "enabled": true,
+            "frame": {
+              "height": 13,
+              "width": 64,
+              "x": 585,
+              "y": 416
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/39",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": "totalProgress"
+          },
+          {
+            "actions": [],
+            "description": "playerCanvasAdjust",
+            "enabled": true,
+            "frame": {
+              "height": 12,
+              "width": 41,
+              "x": 891,
+              "y": 416
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/40",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "PlayerPlayBtn",
+            "enabled": true,
+            "frame": {
+              "height": 28,
+              "width": 28,
+              "x": 722,
+              "y": 408
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/41",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "project_config_function_assistant",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 59,
+              "x": 976,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/42",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "project_config_default",
+            "enabled": true,
+            "frame": {
+              "height": 42,
+              "width": 64,
+              "x": 1036,
+              "y": 82
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/43",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXIncrement",
+              "AXDecrement",
+              "AXRaise",
+              "AXIncrement",
+              "AXDecrement"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 320,
+              "width": 10,
+              "x": 1341,
+              "y": 124
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/44",
+            "role": "AXScrollBar",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "MainMultiTimelineLayout",
+            "enabled": true,
+            "frame": {
+              "height": 307,
+              "width": 1262,
+              "x": 89,
+              "y": 450
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/45",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "MainTimeLineRoot",
+            "enabled": true,
+            "frame": {
+              "height": 307,
+              "width": 1262,
+              "x": 89,
+              "y": 450
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/46",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "addMultiTimeline",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 93,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/47",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "undo",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 203,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/48",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "redo",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 239,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/49",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "cutoff",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 275,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/50",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "cutLeft",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 311,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/51",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "cutRight",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 347,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/52",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "del",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 383,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/53",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "mark",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 419,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/54",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "videoExpand",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 455,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/55",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "aiSmartEdit",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 491,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/56",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "audioRecord",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 909,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/57",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "mainTrackAdsorb",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 958,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/58",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "adsorb",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 994,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/59",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "quicklyAdjustZoomFit",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 1143,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/60",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "zoomOut",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 1179,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/61",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "zoomIn",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 1323,
+              "y": 454
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/62",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "automationcoverItem",
+            "enabled": true,
+            "frame": {
+              "height": 38,
+              "width": 38,
+              "x": 217,
+              "y": 610
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/63",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "MTLSVideoP:video-from-rawpixel-id-26679727-sd.mp4",
+            "enabled": true,
+            "frame": {
+              "height": 74,
+              "width": 117,
+              "x": 263,
+              "y": 592
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/64",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "MTLSVideoP:Vidéos de ruisseau.mp4",
+            "enabled": true,
+            "frame": {
+              "height": 74,
+              "width": 118,
+              "x": 382,
+              "y": 592
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/65",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "MTLSVideoP:Waves_moving_on_cross_202609011624.mp4",
+            "enabled": true,
+            "frame": {
+              "height": 74,
+              "width": 117,
+              "x": 501,
+              "y": 592
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/66",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXIncrement",
+              "AXDecrement",
+              "AXRaise",
+              "AXIncrement",
+              "AXDecrement"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 236,
+              "width": 10,
+              "x": 1335,
+              "y": 511
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/67",
+            "role": "AXScrollBar",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXIncrement",
+              "AXDecrement",
+              "AXRaise",
+              "AXIncrement",
+              "AXDecrement"
+            ],
+            "description": "",
+            "enabled": true,
+            "frame": {
+              "height": 10,
+              "width": 1132,
+              "x": 213,
+              "y": 747
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/68",
+            "role": "AXScrollBar",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "TimeLineRulerAdsorb",
+            "enabled": true,
+            "frame": {
+              "height": 14,
+              "width": 14,
+              "x": 256,
+              "y": 483
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/69",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXPress"
+            ],
+            "description": "",
+            "enabled": false,
+            "frame": {
+              "height": 16,
+              "width": 16,
+              "x": 92,
+              "y": 56
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/70",
+            "role": "AXButton",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXPress",
+              "AXShowMenu"
+            ],
+            "description": "",
+            "enabled": false,
+            "frame": {
+              "height": 16,
+              "width": 16,
+              "x": 136,
+              "y": 56
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/71",
+            "role": "AXButton",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [
+              "AXPress"
+            ],
+            "description": "",
+            "enabled": false,
+            "frame": {
+              "height": 16,
+              "width": 16,
+              "x": 114,
+              "y": 56
+            },
+            "identifier": "",
+            "parent": "window/1",
+            "path": "window/1/72",
+            "role": "AXButton",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "automation",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 24,
+              "x": 360,
+              "y": 136
+            },
+            "identifier": "",
+            "parent": "window/1/35",
+            "path": "window/1/35/0",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "automationmaterial_order_btn",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 32,
+              "x": 393,
+              "y": 136
+            },
+            "identifier": "",
+            "parent": "window/1/36",
+            "path": "window/1/36/0",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "automationmaterial_filter_btn",
+            "enabled": true,
+            "frame": {
+              "height": 24,
+              "width": 32,
+              "x": 434,
+              "y": 136
+            },
+            "identifier": "",
+            "parent": "window/1/37",
+            "path": "window/1/37/0",
+            "role": "AXStaticText",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "",
+            "enabled": null,
+            "frame": {
+              "height": 16,
+              "width": 14,
+              "x": 137,
+              "y": 56
+            },
+            "identifier": "",
+            "parent": "window/1/71",
+            "path": "window/1/71/0",
+            "role": "AXGroup",
+            "sheet": false,
+            "title": "",
+            "value": null
+          },
+          {
+            "actions": [],
+            "description": "",
+            "enabled": null,
+            "frame": {
+              "height": 16,
+              "width": 14,
+              "x": 137,
+              "y": 56
+            },
+            "identifier": "",
+            "parent": "window/1/71/0",
+            "path": "window/1/71/0/0",
+            "role": "AXGroup",
+            "sheet": false,
+            "title": "",
+            "value": null
+          }
+        ],
+        "path": "window/1",
+        "title": "CapCut"
+      }
+    ]
+  }
+}

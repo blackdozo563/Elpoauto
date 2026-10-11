@@ -1,5 +1,9 @@
 # capcut-ax — l’outil natif du pilote CapCut
 
+## Dernier bouton Exporter : relevé du 11 octobre
+
+Le diagnostic réel de la 0.7.0 corrigée montre deux AXPress acceptés au premier plan sans encodage. Le pilote utilise donc `press --label ExportOkBtn --expect-name <nom> --mouse` : un clic souris unique après relecture du bouton et du chemin, validation du cadre natif et hit-test strict sur le même contrôle. Cette option est refusée pour tous les autres boutons. Elle ne fait jamais AXPress avant le clic ; aucune répétition automatique du dernier Exporter. La réponse décrit une commande postée, pas une preuve de démarrage.
+
 Outil Swift qui lit et commande CapCut 9.3.0 par les API d’accessibilité de macOS. Il est embarqué dans ElpoAiAutoCapcut (`Contents/MacOS/capcut-ax`, compilé par `npm run build:native`) et lancé par l’application, dont il utilise l’autorisation Accessibilité. Aucune lecture JXA/System Events, aucune coordonnée calibrée, jamais la touche Entrée.
 
 Chaque commande répond **un** objet JSON sur la sortie standard. Code de sortie : `0` fait, `3` refusé avant tout envoi à CapCut, `4` envoyé mais résultat incertain. `commandAttempted` dit si quelque chose a été envoyé à CapCut.

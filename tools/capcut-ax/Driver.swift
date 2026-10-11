@@ -368,12 +368,15 @@ func snapshotCommand(scope: SnapshotScope, seconds: Double) -> [String: Any] {
     return r
 }
 
-func pressCommand(label: String, expectName: String?) -> [String: Any] {
+func pressCommand(label: String, expectName: String?, mouse: Bool = false) -> [String: Any] {
     var r = baseResult("press")
     r["label"] = label
     do {
         guard let view = pressableControls[label] else {
             throw DriverFailure(code: "LABEL_REFUSED", message: "« \(label) » ne fait pas partie des commandes autorisées (ExportOkBtn, automationcancel, automationcloseBtn).")
+        }
+        guard !mouse || label == "ExportOkBtn" else {
+            throw DriverFailure(code: "LABEL_REFUSED", message: "Le clic souris dans la feuille est réservé au dernier bouton Exporter.")
         }
         let app = try connectCapCut()
         r["focusedPIDBeforeActivation"] = focusedPid().map { Int($0) as Any } ?? NSNull()
@@ -426,6 +429,63 @@ func pressCommand(label: String, expectName: String?) -> [String: Any] {
         guard button.enabled != false else {
             throw DriverFailure(code: "CONTROL_DISABLED", message: "Le bouton « \(label) » est désactivé dans CapCut. Aucune commande envoyée.")
         }
+        if mouse {
+            // The user's two real reports show successful AXPress with no effect.
+            // Choose ONE native mouse command instead; never AXPress then click.
+            guard let rect = button.frame, let sheetRect = sheet.first(where: { $0.role == kAXSheetRole })?.frame,
+                  let point = exportClickPoint(button: rect, sheet: sheetRect, windows: shot.windows.compactMap { $0.main ? $0.frame : nil }, screens: displayBounds()) else {
+                throw DriverFailure(code: "POINT_INVALID", message: "Le cadre natif d’Exporter n’est pas entièrement dans la feuille et la fenêtre visibles. Aucun clic envoyé.")
+            }
+            r["method"] = "CGEvent"
+            r["point"] = ["x": Double(point.x), "y": Double(point.y)]
+            var hit: AXUIElement?
+            let hitCode = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &hit)
+            r["hitResult"] = errorName(hitCode)
+            reader.deadline = Date().addingTimeInterval(2)
+            var chain: [[String: Any]] = []
+            var verified = false
+            var current = hit
+            if hitCode == .success {
+                for _ in 0..<10 {
+                    guard let node = current else { break }
+                    var owner: pid_t = 0
+                    guard AXUIElementGetPid(node, &owner) == .success, owner == app.processIdentifier else { break }
+                    chain.append(["role": try reader.string(node, kAXRoleAttribute), "identifier": try reader.string(node, kAXIdentifierAttribute), "title": try reader.string(node, kAXTitleAttribute), "description": try reader.string(node, kAXDescriptionAttribute)])
+                    if CFEqual(node, button.element) { verified = true; break }
+                    guard let parent = try reader.value(node, kAXParentAttribute), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+                    current = (parent as! AXUIElement)
+                }
+            }
+            r["hitChain"] = chain; r["hitVerified"] = verified
+            guard verified else {
+                throw DriverFailure(code: "HIT_MISMATCH", message: "Le contrôle sous le centre natif n’est pas ExportOkBtn. Aucun clic envoyé.")
+            }
+            guard let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left),
+                  let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
+                  let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
+                throw DriverFailure(code: "EVENT_FAILED", message: "Événement souris impossible à créer. Aucun clic envoyé.")
+            }
+            down.setIntegerValueField(.mouseEventClickState, value: 1)
+            up.setIntegerValueField(.mouseEventClickState, value: 1)
+            // Consume the command only at the last moment; no retry after posting.
+            guard focusedPid() == app.processIdentifier else {
+                throw DriverFailure(code: "NOT_FRONTMOST", message: "Le premier plan a changé avant le clic. Aucun clic envoyé.")
+            }
+            r["commandAttempted"] = true
+            move.post(tap: .cghidEventTap)
+            Thread.sleep(forTimeInterval: 0.12)
+            // Once mouseDown is posted, always post mouseUp; never leave it held.
+            guard focusedPid() == app.processIdentifier else {
+                throw DriverFailure(code: "CLICK_UNCERTAIN", message: "Le premier plan a changé après le déplacement souris. Aucun bouton souris envoyé ; commande non répétée.", attempted: true)
+            }
+            down.post(tap: .cghidEventTap)
+            Thread.sleep(forTimeInterval: 0.05)
+            up.post(tap: .cghidEventTap)
+            r["ok"] = true
+            r["clickPosted"] = true
+            return r
+        }
+        r["method"] = "AXPress"
         guard button.actions.contains(kAXPressAction) else {
             throw DriverFailure(code: "NO_PRESS", message: "Le bouton « \(label) » n’annonce pas AXPress. Aucune commande envoyée.")
         }
@@ -449,6 +509,15 @@ func pressCommand(label: String, expectName: String?) -> [String: Any] {
     } catch {
         return failureResult("press", DriverFailure(code: "DRIVER_ERROR", message: String(describing: error)), extra: r)
     }
+}
+
+// AX coordinates and CGEvent coordinates are macOS points, including on Retina.
+// No multiplication by scaleFactor; the complete button must belong to its sheet.
+func exportClickPoint(button: CGRect, sheet: CGRect, windows: [CGRect], screens: [CGRect]) -> CGPoint? {
+    guard [button.minX, button.minY, button.width, button.height, sheet.minX, sheet.minY, sheet.width, sheet.height].allSatisfy({ $0.isFinite }),
+          button.width > 4, button.height > 4, sheet.contains(button), windows.contains(where: { $0.contains(button) }) else { return nil }
+    let point = CGPoint(x: button.midX, y: button.midY)
+    return pointAllowed(point, windows: windows, screens: screens) ? point : nil
 }
 
 func clickCommand(x: Double, y: Double, double: Bool, expect: String, strict: Bool) -> [String: Any] {
@@ -551,6 +620,11 @@ func driverSelfTest() -> [String: Any] {
     expect(isOutputPath("/Users/demo/Desktop/LIYO.mp4") && isOutputPath("/a/B.MOV") && !isOutputPath("LIYO.mp4") && !isOutputPath("/a/b.mp4 x"), "chemin de sortie")
     expect(pressableControls["publish_pc_btn"] == nil && pressableControls["MainWindowTitleBarExportBtn"] == nil, "liste blanche des boutons")
     let window = CGRect(x: 80, y: 46, width: 1280, height: 720), screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    let exportButton = CGRect(x: 992, y: 697, width: 72, height: 28)
+    let sheet = CGRect(x: 360, y: 82, width: 720, height: 663)
+    expect(exportClickPoint(button: exportButton, sheet: sheet, windows: [window], screens: [screen]) == CGPoint(x: 1028, y: 711), "bouton du relevé réel, points Retina sans mise à l’échelle")
+    expect(exportClickPoint(button: exportButton.offsetBy(dx: 200, dy: 0), sheet: sheet, windows: [window], screens: [screen]) == nil, "bouton hors feuille refusé")
+    expect(exportClickPoint(button: exportButton, sheet: sheet, windows: [window], screens: [CGRect(x: 0, y: 0, width: 900, height: 600)]) == nil, "point hors écran refusé")
     expect(pointAllowed(CGPoint(x: 1309, y: 64), windows: [window], screens: [screen]), "bouton Exporter de l’éditeur")
     expect(!pointAllowed(CGPoint(x: 1309, y: 47), windows: [window], screens: [screen]), "bord de fenêtre refusé")
     expect(!pointAllowed(CGPoint(x: 1400, y: 64), windows: [window], screens: [screen]), "hors fenêtre refusé")

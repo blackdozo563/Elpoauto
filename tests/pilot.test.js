@@ -100,13 +100,13 @@ test('pilote : clic sur « Exporter » de l’éditeur non reçu — un seul nou
   } finally { f.cleanup(); }
 });
 
-test('pilote : AXPress sans effet — un seul nouvel essai, puis l’export démarre', async () => {
+test('pilote : clic final sans effet — aucun second envoi, lot interrompu', async () => {
   const { f, exportDir, sim, pilot, projects } = setup({ missPresses: 1 }, { startSeconds: 2 });
   try {
     const [job] = await pilot.run(projects(1), { exportDir });
-    assert.equal(job.status, 'done', job.error);
-    assert.equal(sim.log.filter(l => l === 'press ExportOkBtn').length, 2);
-    assert.match(notes(pilot), /Nouvel essai unique par AXPress/);
+    assert.equal(job.status, 'failed');
+    assert.equal(sim.log.filter(l => l === 'press ExportOkBtn').length, 1);
+    assert.doesNotMatch(notes(pilot), /Nouvel essai unique par AXPress/);
   } finally { f.cleanup(); }
 });
 
@@ -116,8 +116,23 @@ test('pilote : Exporter jamais reçu — erreur explicite, jamais de troisième 
     const jobs = await pilot.run(projects(2), { exportDir });
     assert.equal(jobs[0].status, 'failed');
     assert.match(jobs[0].error, /n’a pas commencé l’export.*réglages d’export/);
-    assert.equal(sim.log.filter(l => l === 'press ExportOkBtn').length, 2);
+    assert.equal(sim.log.filter(l => l === 'press ExportOkBtn').length, 1);
     assert.equal(jobs[1].status, 'cancelled');
+  } finally { f.cleanup(); }
+});
+
+test('pilote : AXPress sans effet observé sur Mac — le dernier Exporter utilise directement la souris', async () => {
+  const { f, exportDir, sim, pilot, projects } = setup({ requireExportMouse: true }, { startSeconds: 1 });
+  const nativePress = sim.driver.press;
+  const attempts = [];
+  sim.driver.press = async args => { attempts.push(args); return nativePress(args); };
+  try {
+    const [job] = await pilot.run(projects(1), { exportDir });
+    assert.equal(job.status, 'done', job.error);
+    const final = attempts.filter(a => a.label === 'ExportOkBtn');
+    assert.equal(final.length, 1);
+    assert.equal(final[0].mouse, true);
+    assert.equal(attempts.find(a => a.label === 'automationcloseBtn').mouse, undefined, 'Fermer reste AXPress');
   } finally { f.cleanup(); }
 });
 

@@ -1,5 +1,12 @@
 # Changements
 
+## Dernier Exporter : clic natif unique — 11 octobre 2026
+
+- Le second diagnostic réel prouve que les deux AXPress ont répondu success alors que CapCut était au premier plan, sans passer à l’encodage. Le premier plan ne suffit donc pas à résoudre ce cas.
+- Le pilote utilise directement un clic souris unique pour ExportOkBtn, sans AXPress préalable. Le bouton est relu dans l’AXSheet après activation, son nom de fichier contrôlé, son cadre contenu dans la feuille et la fenêtre, et le contrôle sous son centre doit être le même AXButton (ou son enfant). Les coordonnées natives restent en points macOS, sans facteur Retina.
+- Aucun second envoi automatique du dernier Exporter. Fermer et Annuler conservent AXPress ; la navigation et les protections des projets restent inchangées.
+- Le diagnostic conserve la méthode CGEvent, le point, le hit-test et le résultat envoyé. Les contrôles CI ne constituent pas une preuve d’export sur Mac.
+
 ## Correctif du pilote natif 0.7.0 — 11 octobre 2026
 
 - CapCut est remis au premier plan avant AXPress, puis la feuille et le bouton sont relus. Le premier plan est vérifié à nouveau juste avant l’envoi, comme dans le prototype autonome.

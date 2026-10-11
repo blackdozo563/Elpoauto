@@ -117,13 +117,14 @@ export function simulatedCapcut({ exportDir, name, ...o }) {
       }
       return { ok: true, commandAttempted: true };
     },
-    press: async ({ label, expectName }) => {
+    press: async ({ label, expectName, mouse = false }) => {
       log.push(`press ${label}`);
       if (!['ExportOkBtn', 'automationcancel', 'automationcloseBtn'].includes(label)) return refuse('LABEL_REFUSED', `« ${label} » refusé.`);
       if (!running) return refuse('NOT_RUNNING', 'CapCut n’est pas ouvert.');
       if (label === 'ExportOkBtn') {
         if (page !== 'settings') return refuse('WRONG_VIEW', 'Pas de réglages d’export.');
         if (!targetMatches(target(), expectName)) return refuse('TARGET_MISMATCH', `CapCut s’apprête à exporter « ${path.basename(target())} ».`);
+        if (o.requireExportMouse && !mouse) return { ok: true, commandAttempted: true, pressResult: 'success', method: 'AXPress' };
         if (missPress > 0) { missPress--; return { ok: true, commandAttempted: true, pressResult: 'success' }; }
         percent = 10; go('exporting');
         if (o.uncertainPress) return { ok: false, code: 'PRESS_UNCERTAIN', message: 'AXPress a répondu cannotComplete.', commandAttempted: true };
