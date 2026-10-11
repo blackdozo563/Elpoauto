@@ -1,3 +1,5 @@
+> **Historique 0.5.0.** Pour le pilotage de CapCut, la référence est désormais `docs/INSTRUCTIONS-CODEX-0.7.md` (pilote natif, sans visée).
+
 # Prompt pour ChatGPT Codex — ElpoAiAutoCapcut 0.5.0
 
 Copie tout le bloc ci-dessous dans Codex, avec le dépôt (le contenu de `ElpoAiAutoCapcut-0.5.0-sources.zip`) poussé sur GitHub.
