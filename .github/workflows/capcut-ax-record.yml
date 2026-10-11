@@ -1,0 +1,39 @@
+name: capcut-ax record (relevés seulement, aucune release)
+on:
+  push:
+    branches: ['codex/capcut-ax-prototype']
+    paths: ['tools/capcut-ax/**', '.github/workflows/capcut-ax-record.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  record:
+    runs-on: macos-14
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compiler et signer l’enregistreur ARM64
+        run: |
+          test "$(uname -m)" = arm64
+          node scripts/ci-command.cjs bash tools/capcut-ax/build.sh
+      - name: Vérifier le JSON sans CapCut et sans commande envoyée
+        run: |
+          "dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" state > dist/capcut-ax-record/state-sans-capcut.json
+          python3 -c 'import json; d=json.load(open("dist/capcut-ax-record/state-sans-capcut.json")); assert d["observationOnly"] and not d["commandAttempted"] and d["runningInstances"] == 0 and not d["ok"]'
+      - name: Vérifier que les actions attendent les relevés
+        run: |
+          if "dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" press-export > /tmp/action-refusee.json; then exit 1; fi
+          python3 -c 'import json; d=json.load(open("/tmp/action-refusee.json")); assert not d["ok"] and not d["commandAttempted"]'
+      - name: Ouvrir le panneau sans enregistrer ni agir
+        run: '"dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" --smoke-ui > dist/capcut-ax-record/interface.json'
+      - name: Vérifier l’écriture des relevés et la finalisation du ZIP sans CapCut
+        run: '"dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" --record-self-test > dist/capcut-ax-record/verification-enregistrement.json'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capcut-ax-record-arm64
+          if-no-files-found: error
+          path: |
+            dist/capcut-ax-record/*.zip
+            dist/capcut-ax-record/*.md
+            dist/capcut-ax-record/*.json
+            dist/capcut-ax-record/SHA256SUMS.txt
