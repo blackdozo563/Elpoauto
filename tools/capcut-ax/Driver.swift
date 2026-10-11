@@ -432,7 +432,7 @@ func pressCommand(label: String, expectName: String?, mouse: Bool = false) -> [S
         if mouse {
             // The user's two real reports show successful AXPress with no effect.
             // Choose ONE native mouse command instead; never AXPress then click.
-            guard let rect = button.frame, let sheetRect = sheet.first(where: { $0.role == kAXSheetRole })?.frame,
+            guard let rect = button.frame, let sheetNode = sheet.first(where: { $0.role == kAXSheetRole }), let sheetRect = sheetNode.frame,
                   let point = exportClickPoint(button: rect, sheet: sheetRect, windows: shot.windows.compactMap { $0.main ? $0.frame : nil }, screens: displayBounds()) else {
                 throw DriverFailure(code: "POINT_INVALID", message: "Le cadre natif d’Exporter n’est pas entièrement dans la feuille et la fenêtre visibles. Aucun clic envoyé.")
             }
@@ -444,21 +444,48 @@ func pressCommand(label: String, expectName: String?, mouse: Bool = false) -> [S
             reader.deadline = Date().addingTimeInterval(2)
             var chain: [[String: Any]] = []
             var verified = false
+            var containerHit = false
+            var verification = "none"
             var current = hit
             if hitCode == .success {
                 for _ in 0..<10 {
                     guard let node = current else { break }
                     var owner: pid_t = 0
                     guard AXUIElementGetPid(node, &owner) == .success, owner == app.processIdentifier else { break }
-                    chain.append(["role": try reader.string(node, kAXRoleAttribute), "identifier": try reader.string(node, kAXIdentifierAttribute), "title": try reader.string(node, kAXTitleAttribute), "description": try reader.string(node, kAXDescriptionAttribute)])
-                    if CFEqual(node, button.element) { verified = true; break }
+                    let role = try reader.string(node, kAXRoleAttribute)
+                    let description = try reader.string(node, kAXDescriptionAttribute)
+                    let frame = try reader.frame(node)
+                    chain.append(["role": role, "identifier": try reader.string(node, kAXIdentifierAttribute), "title": try reader.string(node, kAXTitleAttribute), "description": description, "frame": rectJSON(frame)])
+                    if chain.count == 1 {
+                        // On the real Mac, hit-testing this button returns the
+                        // sheet-wide static ExportDialog, not the AXButton.
+                        // Require that exact element in our complete native read,
+                        // and later its exact AXSheet ancestor. Never accept a
+                        // bare window, an arbitrary label or another button.
+                        let sameContainer = sheet.contains { $0.role == kAXStaticTextRole && $0.axDescription == "ExportDialog" && CFEqual($0.element, node) }
+                        containerHit = observedExportContainer(role: role, description: description, frame: frame, button: rect, sameElement: sameContainer)
+                    }
+                    if CFEqual(node, button.element) { verified = true; verification = "exact-button"; break }
+                    if containerHit && CFEqual(node, sheetNode.element) { verified = true; verification = "same-sheet-ExportDialog"; break }
                     guard let parent = try reader.value(node, kAXParentAttribute), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
                     current = (parent as! AXUIElement)
                 }
             }
-            r["hitChain"] = chain; r["hitVerified"] = verified
+            r["hitChain"] = chain; r["hitVerified"] = verified; r["hitVerification"] = verification
             guard verified else {
                 throw DriverFailure(code: "HIT_MISMATCH", message: "Le contrôle sous le centre natif n’est pas ExportOkBtn. Aucun clic envoyé.")
+            }
+            // Re-read after the hit-test: the same sheet, unique button, frame and
+            // announced path must still be present before preparing any event.
+            let fresh = reader.snapshot(scope: .sheet, seconds: 3, maxNodes: 50)
+            let freshButtons = fresh.sheetNodes.filter { $0.role == kAXButtonRole && $0.named("ExportOkBtn") }
+            let freshTargets = Set(fresh.sheetNodes.flatMap { $0.labels }.filter { isOutputPath($0) })
+            guard fresh.sheetsSeen == 1, fresh.sheetComplete, sheetView(fresh.sheetNodes) == "settings",
+                  fresh.sheetNodes.contains(where: { $0.role == kAXSheetRole && CFEqual($0.element, sheetNode.element) }),
+                  freshButtons.count == 1, let freshButton = freshButtons.first,
+                  CFEqual(freshButton.element, button.element), freshButton.frame == button.frame, freshButton.enabled != false,
+                  freshTargets.count == 1, freshTargets.first == r["target"] as? String else {
+                throw DriverFailure(code: "TARGET_CHANGED", message: "La feuille, le bouton ou le fichier annoncé a changé avant le clic. Aucun clic envoyé.")
             }
             guard let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left),
                   let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
@@ -518,6 +545,14 @@ func exportClickPoint(button: CGRect, sheet: CGRect, windows: [CGRect], screens:
           button.width > 4, button.height > 4, sheet.contains(button), windows.contains(where: { $0.contains(button) }) else { return nil }
     let point = CGPoint(x: button.midX, y: button.midY)
     return pointAllowed(point, windows: windows, screens: screens) ? point : nil
+}
+
+// Restricted fallback for the exact hit-test behaviour recorded on CapCut 9.3.0.
+// The caller separately verifies ownership and the identical AXSheet ancestor.
+func observedExportContainer(role: String, description: String, frame: CGRect?, button: CGRect, sameElement: Bool) -> Bool {
+    guard sameElement, role == kAXStaticTextRole, description == "ExportDialog", let frame = frame,
+          [frame.minX, frame.minY, frame.width, frame.height].allSatisfy({ $0.isFinite }) else { return false }
+    return frame.contains(button)
 }
 
 func clickCommand(x: Double, y: Double, double: Bool, expect: String, strict: Bool) -> [String: Any] {
@@ -622,6 +657,12 @@ func driverSelfTest() -> [String: Any] {
     let window = CGRect(x: 80, y: 46, width: 1280, height: 720), screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
     let exportButton = CGRect(x: 992, y: 697, width: 72, height: 28)
     let sheet = CGRect(x: 360, y: 82, width: 720, height: 663)
+    let container = CGRect(x: 360, y: 75, width: 720, height: 663)
+    expect(observedExportContainer(role: kAXStaticTextRole, description: "ExportDialog", frame: container, button: exportButton, sameElement: true), "fond ExportDialog du relevé réel")
+    expect(!observedExportContainer(role: kAXWindowRole, description: "ExportDialog", frame: container, button: exportButton, sameElement: true), "fenêtre seule refusée")
+    expect(!observedExportContainer(role: kAXStaticTextRole, description: "ExportDialog", frame: container, button: exportButton, sameElement: false), "autre élément homonyme refusé")
+    expect(!observedExportContainer(role: kAXButtonRole, description: "automationcancel", frame: container, button: exportButton, sameElement: true), "autre bouton refusé")
+    expect(!observedExportContainer(role: kAXStaticTextRole, description: "ExportDialog", frame: CGRect(x: 0, y: 0, width: 100, height: 100), button: exportButton, sameElement: true), "fond ne couvrant pas Exporter refusé")
     expect(exportClickPoint(button: exportButton, sheet: sheet, windows: [window], screens: [screen]) == CGPoint(x: 1028, y: 711), "bouton du relevé réel, points Retina sans mise à l’échelle")
     expect(exportClickPoint(button: exportButton.offsetBy(dx: 200, dy: 0), sheet: sheet, windows: [window], screens: [screen]) == nil, "bouton hors feuille refusé")
     expect(exportClickPoint(button: exportButton, sheet: sheet, windows: [window], screens: [CGRect(x: 0, y: 0, width: 900, height: 600)]) == nil, "point hors écran refusé")

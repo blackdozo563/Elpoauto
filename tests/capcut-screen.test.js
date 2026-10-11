@@ -31,6 +31,19 @@ test('diagnostic réel corrigé : deux AXPress success au premier plan, réglage
   assert.equal(readScreen(diagnostic.snapshot).screen, 'export-settings');
 });
 
+test('diagnostic réel du clic : le hit-test renvoie le fond ExportDialog de la feuille', () => {
+  const { command } = JSON.parse(fs.readFileSync(new URL('./fixtures/capcut-export-dialog-hit.json', import.meta.url)));
+  const result = command.result;
+  assert.equal(result.code, 'HIT_MISMATCH');
+  assert.equal(result.commandAttempted, false);
+  assert.equal(result.focusedPID, result.capcutPID);
+  assert.equal(result.hitResult, 'success');
+  assert.deepEqual(result.point, center(result.control.frame));
+  assert.deepEqual(result.hitChain.map(n => [n.role, n.description]), [
+    ['AXStaticText', 'ExportDialog'], ['AXSheet', ''], ['AXWindow', ''], ['AXApplication', ''],
+  ]);
+});
+
 test('relevé réel : chaque page du cycle est reconnue', () => {
   const expected = {
     home: 'home', 'busy-opening': 'busy', 'editor-loading': 'busy', editor: 'editor', 'busy-sheet': 'busy',

@@ -1,5 +1,12 @@
 # Changements
 
+## Hit-test du fond ExportDialog — 11 octobre 2026
+
+- Le diagnostic du clic final refusé montre le fond AXStaticText ExportDialog, puis AXSheet, à la place du bouton lui-même dans le hit-test macOS.
+- Le clic accepte ce cas précis uniquement si le fond est exactement celui de la lecture native complète, couvre le bouton, appartient à CapCut et remonte à la même AXSheet. Une fenêtre seule, un autre contrôle ou un élément homonyme restent refusés.
+- Après le hit-test, une nouvelle lecture confirme la même feuille, le même bouton activé au même cadre et le même fichier annoncé. Le clic reste unique et le démarrage reste à confirmer séparément.
+- Validation technique uniquement ; aucun export réel réussi n’est encore attesté.
+
 ## Dernier Exporter : clic natif unique — 11 octobre 2026
 
 - Le second diagnostic réel prouve que les deux AXPress ont répondu success alors que CapCut était au premier plan, sans passer à l’encodage. Le premier plan ne suffit donc pas à résoudre ce cas.

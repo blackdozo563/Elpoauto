@@ -2,6 +2,8 @@
 
 ## Dernier bouton Exporter : relevé du 11 octobre
 
+Le relevé du clic refusé montre que le hit-test renvoie le fond statique `ExportDialog` de l’AXSheet. Ce fond peut être accepté uniquement si c’est exactement celui de la lecture complète, s’il couvre le bouton natif, et si sa chaîne de parents rejoint la même AXSheet. La feuille, le bouton, son cadre et le chemin sont relus après cette vérification. Une simple fenêtre ou un autre contrôle ne suffisent jamais.
+
 Le diagnostic réel de la 0.7.0 corrigée montre deux AXPress acceptés au premier plan sans encodage. Le pilote utilise donc `press --label ExportOkBtn --expect-name <nom> --mouse` : un clic souris unique après relecture du bouton et du chemin, validation du cadre natif et hit-test strict sur le même contrôle. Cette option est refusée pour tous les autres boutons. Elle ne fait jamais AXPress avant le clic ; aucune répétition automatique du dernier Exporter. La réponse décrit une commande postée, pas une preuve de démarrage.
 
 Outil Swift qui lit et commande CapCut 9.3.0 par les API d’accessibilité de macOS. Il est embarqué dans ElpoAiAutoCapcut (`Contents/MacOS/capcut-ax`, compilé par `npm run build:native`) et lancé par l’application, dont il utilise l’autorisation Accessibilité. Aucune lecture JXA/System Events, aucune coordonnée calibrée, jamais la touche Entrée.

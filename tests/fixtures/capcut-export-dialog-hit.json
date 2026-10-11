@@ -1,0 +1,77 @@
+{
+  "source": "Diagnostic réel 2026-10-11T20-09-35-327Z : clic refusé avant envoi ; snapshot pris ensuite sans feuille.",
+  "command": {
+    "at": "2026-10-11T20:07:28.898Z",
+    "args": [
+      "press",
+      "--label",
+      "ExportOkBtn",
+      "--expect-name",
+      "projet 1-30sec",
+      "--mouse"
+    ],
+    "durationMs": 384,
+    "result": {
+      "at": "2026-10-11T20:07:28Z",
+      "capcutPID": 99871,
+      "code": "HIT_MISMATCH",
+      "command": "press",
+      "commandAttempted": false,
+      "control": {
+        "actions": [
+          "AXPress",
+          "AXRaise"
+        ],
+        "frame": {
+          "height": 28,
+          "width": 72,
+          "x": 992,
+          "y": 697
+        },
+        "role": "AXButton"
+      },
+      "focusedPID": 99871,
+      "focusedPIDBeforeActivation": 99871,
+      "hitChain": [
+        {
+          "description": "ExportDialog",
+          "identifier": "",
+          "role": "AXStaticText",
+          "title": ""
+        },
+        {
+          "description": "",
+          "identifier": "",
+          "role": "AXSheet",
+          "title": ""
+        },
+        {
+          "description": "",
+          "identifier": "",
+          "role": "AXWindow",
+          "title": "CapCut"
+        },
+        {
+          "description": "",
+          "identifier": "",
+          "role": "AXApplication",
+          "title": "CapCut"
+        }
+      ],
+      "hitResult": "success",
+      "hitVerified": false,
+      "label": "ExportOkBtn",
+      "message": "Le contrôle sous le centre natif n’est pas ExportOkBtn. Aucun clic envoyé.",
+      "method": "CGEvent",
+      "ok": false,
+      "point": {
+        "x": 1028,
+        "y": 711
+      },
+      "schema": 2,
+      "target": "/Users/demo/Desktop/projet 1-30sec.mp4",
+      "tool": "capcut-ax",
+      "view": "settings"
+    }
+  }
+}
