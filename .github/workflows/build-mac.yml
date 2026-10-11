@@ -45,6 +45,7 @@ jobs:
             dist/*.dmg
             dist/SHA256SUMS.txt
             dist/dmg-validation.json
+            tools/capcut-ax/ESSAI-1.md
       - name: Attach the DMG to the GitHub release (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2

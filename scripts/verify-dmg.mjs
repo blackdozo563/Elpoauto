@@ -47,6 +47,12 @@ try {
   const executable = path.join(copiedApp, 'Contents/MacOS', plist.CFBundleExecutable);
   assert.equal(command('/usr/bin/lipo', ['-archs', executable]).trim(), 'arm64');
   report.checks.push('arm64 executable');
+  const nativeHelper = path.join(copiedApp, 'Contents/Resources/capcut-ax.app/Contents/MacOS/capcut-ax');
+  assert.equal(command('/usr/bin/lipo', ['-archs', nativeHelper]).trim(), 'arm64');
+  const nativeVersion = JSON.parse(command(nativeHelper, ['--version']));
+  assert(nativeVersion.availableCommands.includes('press-export'));
+  assert(nativeVersion.availableCommands.includes('close-done'));
+  report.checks.push('Native capcut-ax helper packaged, arm64 and command contract');
 
   const server = net.createServer();
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
