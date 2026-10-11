@@ -54,6 +54,7 @@ try {
   command('/usr/bin/codesign', ['--verify', '--strict', helper]);
   const helperRun = args => { try { return JSON.parse(command(helper, args).trim().split('\n').at(-1)); } catch (e) { return JSON.parse(String(e.stdout).trim().split('\n').at(-1)); } };
   const version = helperRun(['--version']);
+  assert.equal(version.closeMethod, 'CGEvent-validated-single', 'Native closing method missing');
   for (const c of ['snapshot', 'press', 'click']) assert(version.availableCommands.includes(c), `capcut-ax lacks ${c}`);
   assert.deepEqual(version.pressable, ['ExportOkBtn', 'automationcancel', 'automationcloseBtn']);
   assert.equal(helperRun(['--self-test']).ok, true, 'capcut-ax self-test failed');

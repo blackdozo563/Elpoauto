@@ -132,7 +132,7 @@ test('pilote : AXPress sans effet observé sur Mac — le dernier Exporter utili
     const final = attempts.filter(a => a.label === 'ExportOkBtn');
     assert.equal(final.length, 1);
     assert.equal(final[0].mouse, true);
-    assert.equal(attempts.find(a => a.label === 'automationcloseBtn').mouse, undefined, 'Fermer reste AXPress');
+    assert.equal(attempts.find(a => a.label === 'automationcloseBtn').mouse, true, 'Fermer utilise aussi le clic natif');
   } finally { f.cleanup(); }
 });
 

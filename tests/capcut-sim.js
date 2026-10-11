@@ -130,6 +130,7 @@ export function simulatedCapcut({ exportDir, name, ...o }) {
         if (o.uncertainPress) return { ok: false, code: 'PRESS_UNCERTAIN', message: 'AXPress a répondu cannotComplete.', commandAttempted: true };
       } else if (label === 'automationcloseBtn') {
         if (page !== 'done') return refuse('WRONG_VIEW', 'Pas de panneau de fin.');
+        if (o.requireCloseMouse && !mouse) return { ok: true, commandAttempted: true, pressResult: 'success' };
         go('editor');
       } else {
         if (page !== 'settings') return refuse('WRONG_VIEW', 'Pas de réglages d’export.');

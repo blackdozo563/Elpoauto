@@ -1,5 +1,12 @@
 # Changements
 
+## Fermeture propre du panneau final — 11 octobre 2026
+
+- Trois exports en lot ont réussi sur le Mac cible. Le journal confirme le clic natif Exporter, les trois MP4 vérifiés et l’enchaînement des projets. AXPress sur Fermer est resté sans effet et a nécessité la fermeture forcée protégée.
+- Fermer utilise maintenant le même clic natif vérifié, réservé à la feuille de fin d’export. Le pilote confirme le retour à l’éditeur avant de quitter CapCut normalement.
+- Le chemin Exporter et les protections quit/forceClose des fichiers projet sont conservés. Aucun clic de fermeture pendant l’encodage.
+- Les contrôles techniques ne remplacent pas la confirmation de cette fermeture sur le Mac cible ; paquet privé avant publication.
+
 ## Hit-test du fond ExportDialog — 11 octobre 2026
 
 - Le diagnostic du clic final refusé montre le fond AXStaticText ExportDialog, puis AXSheet, à la place du bouton lui-même dans le hit-test macOS.

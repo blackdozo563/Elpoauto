@@ -18,13 +18,19 @@ function setup(options = {}) {
   return { f, exportDir, sim, pilot, two: [{ path: f.project, name: 'Test ELPO' }, { path: f.project, name: 'Test ELPO' }] };
 }
 
-test('fermeture : « Fermer » du panneau de fin par AXPress, puis CapCut quitte poliment', async () => {
-  const { f, exportDir, sim, pilot } = setup();
+test('fermeture : AXPress sans effet sur Mac — clic natif, éditeur confirmé, sortie normale', async () => {
+  const { f, exportDir, sim, pilot } = setup({ requireCloseMouse: true });
+  const press = sim.driver.press; const closeCalls = [];
+  sim.driver.press = async args => { if (args.label === 'automationcloseBtn') closeCalls.push(args); return press(args); };
   try {
     const [job] = await pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir });
     assert.equal(job.status, 'done', job.error);
     assert.deepEqual(sim.log.slice(-2), ['press automationcloseBtn', 'quit']);
     assert.ok(!sim.log.includes('quit refusé'));
+    assert.equal(closeCalls.length, 1);
+    assert.equal(closeCalls[0].mouse, true);
+    assert.ok(!sim.log.includes('term') && !sim.log.includes('kill'));
+    assert.ok(pilot.log.some(l => l.text.includes('Éditeur CapCut confirmé après fermeture')));
   } finally { f.cleanup(); }
 });
 

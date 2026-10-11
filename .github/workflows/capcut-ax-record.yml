@@ -26,13 +26,14 @@ jobs:
           $H snapshot > /tmp/snapshot.json; test $? -eq 3 || exit 1
           $H press --label ExportOkBtn --expect-name TESTO > /tmp/press.json; test $? -eq 3 || exit 1
           $H press --label ExportOkBtn --expect-name TESTO --mouse > /tmp/mouse.json; test $? -eq 3 || exit 1
-          $H press --label automationcloseBtn --mouse > /tmp/mouse-refus.json; test $? -eq 3 || exit 1
+          $H press --label automationcloseBtn --mouse > /tmp/mouse-close.json; test $? -eq 3 || exit 1
+          $H press --label automationcancel --mouse > /tmp/mouse-refus.json; test $? -eq 3 || exit 1
           $H press --label publish_pc_btn > /tmp/refus.json; test $? -eq 3 || exit 1
           $H click --x 300 --y 400 --expect HomePageDraft --double > /tmp/click.json; test $? -eq 3 || exit 1
           set -e
           python3 - <<'PY'
           import json
-          for name in ('snapshot', 'press', 'mouse', 'mouse-refus', 'refus', 'click'):
+          for name in ('snapshot', 'press', 'mouse', 'mouse-close', 'mouse-refus', 'refus', 'click'):
               d = json.load(open(f'/tmp/{name}.json'))
               assert d['ok'] is False and d['commandAttempted'] is False, (name, d)
           assert json.load(open('/tmp/refus.json'))['code'] == 'LABEL_REFUSED'

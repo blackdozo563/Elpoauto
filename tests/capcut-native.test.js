@@ -23,12 +23,12 @@ test('outil natif : arguments de chaque commande et réponse JSON', async () => 
     assert.equal((await d.snapshot({ scope: 'sheet' })).command, 'snapshot');
     await d.press({ label: 'ExportOkBtn', expectName: 'Test ELPO', mouse: true });
     await d.click({ x: 315.4, y: 486.6, double: true, expect: 'HomePageDraft' });
-    await d.press({ label: 'automationcloseBtn' });
+    await d.press({ label: 'automationcloseBtn', mouse: true });
     assert.deepEqual(h.calls.map(c => c.args), [
       ['snapshot', '--scope', 'sheet', '--budget', '3'],
       ['press', '--label', 'ExportOkBtn', '--expect-name', 'Test ELPO', '--mouse'],
       ['click', '--x', '315', '--y', '487', '--expect', 'HomePageDraft', '--double'],
-      ['press', '--label', 'automationcloseBtn'],
+      ['press', '--label', 'automationcloseBtn', '--mouse'],
     ]);
     assert.ok(h.calls.every(c => c.options.timeout > 0 && c.options.maxBuffer >= 1e6));
   } finally { h.cleanup(); }

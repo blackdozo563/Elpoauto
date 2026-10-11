@@ -2,6 +2,8 @@
 
 ## Dernier bouton Exporter : relevé du 11 octobre
 
+Après le lot réel réussi, `press --label automationcloseBtn --mouse` applique le même clic natif au bouton Fermer du panneau final. Cette commande n’est permise que dans la feuille de fin (`done`). Le pilote attend ensuite une lecture complète de l’éditeur avant de demander la sortie normale de CapCut. Le clic de fermeture n’est jamais permis dans la feuille d’encodage.
+
 Le relevé du clic refusé montre que le hit-test renvoie le fond statique `ExportDialog` de l’AXSheet. Ce fond peut être accepté uniquement si c’est exactement celui de la lecture complète, s’il couvre le bouton natif, et si sa chaîne de parents rejoint la même AXSheet. La feuille, le bouton, son cadre et le chemin sont relus après cette vérification. Une simple fenêtre ou un autre contrôle ne suffisent jamais.
 
 Le diagnostic réel de la 0.7.0 corrigée montre deux AXPress acceptés au premier plan sans encodage. Le pilote utilise donc `press --label ExportOkBtn --expect-name <nom> --mouse` : un clic souris unique après relecture du bouton et du chemin, validation du cadre natif et hit-test strict sur le même contrôle. Cette option est refusée pour tous les autres boutons. Elle ne fait jamais AXPress avant le clic ; aucune répétition automatique du dernier Exporter. La réponse décrit une commande postée, pas une preuve de démarrage.

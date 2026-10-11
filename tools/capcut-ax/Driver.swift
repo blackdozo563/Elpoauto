@@ -375,8 +375,8 @@ func pressCommand(label: String, expectName: String?, mouse: Bool = false) -> [S
         guard let view = pressableControls[label] else {
             throw DriverFailure(code: "LABEL_REFUSED", message: "« \(label) » ne fait pas partie des commandes autorisées (ExportOkBtn, automationcancel, automationcloseBtn).")
         }
-        guard !mouse || label == "ExportOkBtn" else {
-            throw DriverFailure(code: "LABEL_REFUSED", message: "Le clic souris dans la feuille est réservé au dernier bouton Exporter.")
+        guard !mouse || label == "ExportOkBtn" || label == "automationcloseBtn" else {
+            throw DriverFailure(code: "LABEL_REFUSED", message: "Le clic souris dans la feuille est réservé à Exporter et Fermer.")
         }
         let app = try connectCapCut()
         r["focusedPIDBeforeActivation"] = focusedPid().map { Int($0) as Any } ?? NSNull()
@@ -434,7 +434,7 @@ func pressCommand(label: String, expectName: String?, mouse: Bool = false) -> [S
             // Choose ONE native mouse command instead; never AXPress then click.
             guard let rect = button.frame, let sheetNode = sheet.first(where: { $0.role == kAXSheetRole }), let sheetRect = sheetNode.frame,
                   let point = exportClickPoint(button: rect, sheet: sheetRect, windows: shot.windows.compactMap { $0.main ? $0.frame : nil }, screens: displayBounds()) else {
-                throw DriverFailure(code: "POINT_INVALID", message: "Le cadre natif d’Exporter n’est pas entièrement dans la feuille et la fenêtre visibles. Aucun clic envoyé.")
+                throw DriverFailure(code: "POINT_INVALID", message: "Le cadre natif de « \(label) » n’est pas entièrement dans la feuille et la fenêtre visibles. Aucun clic envoyé.")
             }
             r["method"] = "CGEvent"
             r["point"] = ["x": Double(point.x), "y": Double(point.y)]
@@ -473,18 +473,19 @@ func pressCommand(label: String, expectName: String?, mouse: Bool = false) -> [S
             }
             r["hitChain"] = chain; r["hitVerified"] = verified; r["hitVerification"] = verification
             guard verified else {
-                throw DriverFailure(code: "HIT_MISMATCH", message: "Le contrôle sous le centre natif n’est pas ExportOkBtn. Aucun clic envoyé.")
+                throw DriverFailure(code: "HIT_MISMATCH", message: "Le contrôle sous le centre natif n’est pas « \(label) » dans sa feuille. Aucun clic envoyé.")
             }
             // Re-read after the hit-test: the same sheet, unique button, frame and
             // announced path must still be present before preparing any event.
             let fresh = reader.snapshot(scope: .sheet, seconds: 3, maxNodes: 50)
-            let freshButtons = fresh.sheetNodes.filter { $0.role == kAXButtonRole && $0.named("ExportOkBtn") }
+            let freshButtons = fresh.sheetNodes.filter { $0.role == kAXButtonRole && $0.named(label) }
             let freshTargets = Set(fresh.sheetNodes.flatMap { $0.labels }.filter { isOutputPath($0) })
-            guard fresh.sheetsSeen == 1, fresh.sheetComplete, sheetView(fresh.sheetNodes) == "settings",
+            let sameOutput = label != "ExportOkBtn" || (freshTargets.count == 1 && freshTargets.first == (r["target"] as? String))
+            guard fresh.sheetsSeen == 1, fresh.sheetComplete, sheetView(fresh.sheetNodes) == view,
                   fresh.sheetNodes.contains(where: { $0.role == kAXSheetRole && CFEqual($0.element, sheetNode.element) }),
                   freshButtons.count == 1, let freshButton = freshButtons.first,
                   CFEqual(freshButton.element, button.element), freshButton.frame == button.frame, freshButton.enabled != false,
-                  freshTargets.count == 1, freshTargets.first == r["target"] as? String else {
+                  sameOutput else {
                 throw DriverFailure(code: "TARGET_CHANGED", message: "La feuille, le bouton ou le fichier annoncé a changé avant le clic. Aucun clic envoyé.")
             }
             guard let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left),
@@ -656,6 +657,7 @@ func driverSelfTest() -> [String: Any] {
     expect(pressableControls["publish_pc_btn"] == nil && pressableControls["MainWindowTitleBarExportBtn"] == nil, "liste blanche des boutons")
     let window = CGRect(x: 80, y: 46, width: 1280, height: 720), screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
     let exportButton = CGRect(x: 992, y: 697, width: 72, height: 28)
+    let closeButton = CGRect(x: 912, y: 685, width: 72, height: 22)
     let sheet = CGRect(x: 360, y: 82, width: 720, height: 663)
     let container = CGRect(x: 360, y: 75, width: 720, height: 663)
     expect(observedExportContainer(role: kAXStaticTextRole, description: "ExportDialog", frame: container, button: exportButton, sameElement: true), "fond ExportDialog du relevé réel")
@@ -664,6 +666,7 @@ func driverSelfTest() -> [String: Any] {
     expect(!observedExportContainer(role: kAXButtonRole, description: "automationcancel", frame: container, button: exportButton, sameElement: true), "autre bouton refusé")
     expect(!observedExportContainer(role: kAXStaticTextRole, description: "ExportDialog", frame: CGRect(x: 0, y: 0, width: 100, height: 100), button: exportButton, sameElement: true), "fond ne couvrant pas Exporter refusé")
     expect(exportClickPoint(button: exportButton, sheet: sheet, windows: [window], screens: [screen]) == CGPoint(x: 1028, y: 711), "bouton du relevé réel, points Retina sans mise à l’échelle")
+    expect(exportClickPoint(button: closeButton, sheet: sheet, windows: [window], screens: [screen]) == CGPoint(x: 948, y: 696), "bouton Fermer du lot réel, points Retina")
     expect(exportClickPoint(button: exportButton.offsetBy(dx: 200, dy: 0), sheet: sheet, windows: [window], screens: [screen]) == nil, "bouton hors feuille refusé")
     expect(exportClickPoint(button: exportButton, sheet: sheet, windows: [window], screens: [CGRect(x: 0, y: 0, width: 900, height: 600)]) == nil, "point hors écran refusé")
     expect(pointAllowed(CGPoint(x: 1309, y: 64), windows: [window], screens: [screen]), "bouton Exporter de l’éditeur")

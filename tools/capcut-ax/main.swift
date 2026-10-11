@@ -34,6 +34,7 @@ case "record", "--smoke-ui":
 case "--version":
     emit(["tool": "capcut-ax", "schema": 2, "phase": "pilote_natif",
           "exportMethod": "CGEvent-validated-single",
+          "closeMethod": "CGEvent-validated-single",
           "exportHitPolicy": "same-button-or-same-sheet-ExportDialog",
           "availableCommands": ["snapshot", "press", "click", "state", "record", "--self-test"],
           "pressable": pressableControls.keys.sorted(), "commandAttempted": false])
