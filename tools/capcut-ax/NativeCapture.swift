@@ -17,6 +17,7 @@ func errorName(_ code: AXError) -> String {
 
 // Observation only: no AX actions, event posting, activation or System Events.
 final class NativeCapture {
+    var elements: [String: AXUIElement] = [:]
     var deadline = Date.distantFuture
     var reads: [[String: Any]] = []
     var incomplete = Set<String>()
@@ -55,7 +56,7 @@ final class NativeCapture {
     }
     func capture(seconds: Double = 0.85) -> [String: Any] {
         let began = Date(); deadline = began.addingTimeInterval(seconds)
-        reads = []; incomplete = []
+        reads = []; incomplete = []; elements = [:]
         var result: [String: Any] = ["schema": 1, "tool": "capcut-ax", "at": timestamp(),
                                   "command": "state", "commandAttempted": false, "observationOnly": true,
                                   "trusted": AXIsProcessTrusted(), "windows": []]
@@ -90,6 +91,7 @@ final class NativeCapture {
             let list = (try read(root, kAXWindowsAttribute, "application")) as? [AXUIElement] ?? []
             for (w, element) in list.enumerated() {
                 let path = "window/\(w)"
+                elements[path] = element
                 let frame = try rect(element, path)
                 windows.append(["path": path, "title": try text(element, kAXTitleAttribute, path), "frame": frame, "nodes": []])
                 queues.append((element, path, nil, 0, w, nil, false))
@@ -109,6 +111,7 @@ final class NativeCapture {
                 seen.append(element)
                 if depth > 18 { incomplete.insert("limite_profondeur"); continue }
                 let role = try knownRole ?? text(element, kAXRoleAttribute, path)
+                elements[path] = element
                 let description = try text(element, kAXDescriptionAttribute, path)
                 let value = try read(element, kAXValueAttribute, path)
                 var node: [String: Any] = ["path": path, "parent": parent.map { $0 as Any } ?? NSNull(), "role": role,

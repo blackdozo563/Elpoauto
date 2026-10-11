@@ -31,6 +31,7 @@
       "package.json"
     ],
     "mac": {
+      "extraResources": [{ "from": "dist/capcut-ax-record/capcut-ax.app", "to": "capcut-ax.app" }],
       "target": [
         {
           "target": "dmg",

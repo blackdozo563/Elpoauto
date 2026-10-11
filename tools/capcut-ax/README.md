@@ -1,4 +1,4 @@
-# capcut-ax record — relevés avant la refonte du pilote
+# capcut-ax — pilote natif sur relevés réels
 
 Étape préalable demandée : enregistrer un cycle **manuel** CapCut 9.3.0 avec un projet de **5 secondes**. Ce relevé prépare le pilote ; ce n’est aucun des deux essais automatiques (un projet, puis trois projets). Aucune release publique.
 
@@ -24,7 +24,22 @@ L’enregistrement dure au maximum trois minutes par défaut. Fermer ou quitter 
 
 `record` ouvre le petit panneau de contrôle de l’enregistrement et émet immédiatement un accusé JSON `event: pret`. Après démarrage dans ce panneau, il observe sans chevauchement environ une fois par seconde et conserve chaque relevé. Sa sortie est un flux JSON par ligne : prêt, démarrage, résultat final. `--output dossier` change uniquement le dossier des relevés, pas celui de CapCut.
 
-**Aucun AXPress, événement souris, raccourci, Entrée, activation, fermeture, décodage de média ou écriture dans les projets CapCut.** L’outil ne fait aucune lecture JXA/System Events. Les actions `open-project`, `open-export`, `press-export` et `close-done` seront implémentées et vérifiées contre ces relevés avant les essais automatiques. Pour l’instant, elles retournent une erreur JSON sans agir.
+Les commandes `state` et `record` restent strictement en lecture seule. Les commandes d’action sont maintenant :
+
+```sh
+capcut-ax open-project "LIYO"
+capcut-ax open-export
+capcut-ax press-export --name "LIYO" --dir "/Users/recording/Desktop"
+capcut-ax close-done
+```
+
+Chaque action vérifie l’état natif complet, active CapCut, relit la cible, puis utilise AXPress annoncé ou un point natif avec hit-test strict. Aucun texte visible deviné, point calibré, raccourci ou Entrée. Un titre exact est associé au rectangle natif HomePageDraft qui le contient ; aucun double-clic sur le titre. Sans titre exposé, la première vignette native visible est utilisée après `bumpProject` ; l’identité du projet reste obligatoirement vérifiée par le fichier annoncé avant Exporter.
+
+`press-export` vérifie le nom, le dossier et l’absence du fichier annoncé ; il ne modifie pas les réglages CapCut. La tentative consomme un verrou persistant propre à l’instance CapCut, avant la commande. Un retour AX incertain ne déclenche jamais un clic de secours. Seule une nouvelle instance de CapCut autorise une nouvelle tentative. Les réponses distinguent commande tentée et résultat de l’API ; elles ne déclarent jamais l’export terminé.
+
+Le moteur Electron attend l’apparition du MP4 exact et vérifie avec ffprobe la présence d’une piste vidéo et la durée attendue de la timeline (tolérance : au moins 0,1 s, ou deux images). Aucun décodage intégral. Il attend ensuite le panneau de résultat, appelle close-done, confirme l’éditeur, puis utilise le quit et les protections des fichiers projet conservés. Tout état inconnu arrivé au délai interrompt le lot et produit un rapport dans le dossier de sauvegardes utilisateur, sous capcut-native-reports.
+
+`--replay tests/fixtures/capcut-native-cycle.json` vérifie les états et plans sans CapCut, sans commandes réelles et sans preuve fonctionnelle. Le jeu vient des 76 relevés fournis le 11 octobre : dix relevés représentatifs, chemins personnels anonymisés. Les tests de l’ancien chemin d’export JXA/Entrée ont été remplacés par les vérifications du contrat natif ; les tests des protections de fermeture et du moteur sont maintenus.
 
 ## Contrat prévu pour le pilote
 

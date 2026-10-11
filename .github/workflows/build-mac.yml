@@ -28,6 +28,8 @@ jobs:
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
       - run: brew install ffmpeg
       - run: npm ci --no-audit --no-fund
+      - name: Compiler le pilote natif capcut-ax
+        run: node scripts/ci-command.cjs bash tools/capcut-ax/build.sh
       - name: Run the complete test suite
         run: node scripts/ci-command.cjs npm test
       - run: node scripts/ci-command.cjs npm run dist:mac

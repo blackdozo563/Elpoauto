@@ -2,7 +2,7 @@ name: capcut-ax record (relevés seulement, aucune release)
 on:
   push:
     branches: ['codex/capcut-ax-prototype']
-    paths: ['tools/capcut-ax/**', '.github/workflows/capcut-ax-record.yml']
+    paths: ['tools/capcut-ax/**', 'tests/fixtures/capcut-native-cycle.json', '.github/workflows/capcut-ax-record.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -28,6 +28,10 @@ jobs:
         run: '"dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" --smoke-ui > dist/capcut-ax-record/interface.json'
       - name: Vérifier l’écriture des relevés et la finalisation du ZIP sans CapCut
         run: '"dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" --record-self-test > dist/capcut-ax-record/verification-enregistrement.json'
+      - name: Rejouer les états et les plans sur les relevés réels du 11 octobre
+        run: |
+          node scripts/ci-command.cjs "dist/capcut-ax-record/capcut-ax.app/Contents/MacOS/capcut-ax" --replay tests/fixtures/capcut-native-cycle.json > dist/capcut-ax-record/rejeu-releves.json
+          python3 -c 'import json; d=json.load(open("dist/capcut-ax-record/rejeu-releves.json")); assert d["ok"] and not d["commandAttempted"]; assert [r["state"]["page"] for r in d["results"]] == ["home", "unknown", "editor", "export-settings", "encoding", "encoding", "unknown", "done", "editor", "home"]'
       - uses: actions/upload-artifact@v4
         with:
           name: capcut-ax-record-arm64

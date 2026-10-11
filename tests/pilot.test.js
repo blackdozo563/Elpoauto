@@ -1,105 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
-import { fixture } from './fixtures.js';
-import { CapcutPilot, bumpProject, missingMedia, listVideos } from '../lib/capcut-pilot.js';
+import { setup, FAST } from './native-pilot-fixture.js';
+import { CapcutPilot, bumpProject, missingMedia } from '../lib/capcut-pilot.js';
 import { readJson } from '../lib/storage.js';
-
-function fakeActions(exportDir, { subfolder = false } = {}) {
-  const log = []; let open = true;
-  return { log, actions: {
-    accessibility: async () => true, isRunning: async () => open,
-    quit: async () => { log.push('quit'); open = false; }, launch: async () => { log.push('launch'); open = true; }, activate: async () => {},
-    click: async (p, double) => log.push(`click ${p.x},${p.y}${double ? ' double' : ''}`),
-    shortcut: async (k, m) => log.push(`shortcut ${m.join('+')}+${k}`),
-    key: async k => { log.push(`key ${k}`); if (k === 'return') { const dir = subfolder ? path.join(exportDir, 'Projet') : exportDir; fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'Test ELPO.mov'), 'x'.repeat(1000)); } },
-    playable: async () => true } };
-}
-test('pilote : projet en tête de liste, export, fermeture, retour à la liste', async () => {
-  const f = fixture();
-  try {
-    const exportDir = path.join(f.temp, 'exports'); fs.mkdirSync(exportDir);
-    const { log, actions } = fakeActions(exportDir, { subfolder: true });
-    const pilot = new CapcutPilot({ root: f.root, actions, settings: { tile: { x: 400, y: 300 }, launchSeconds: 0, openSeconds: 0, dialogSeconds: 0, stableSeconds: 0, quitSeconds: 1 } });
-    const before = Date.now();
-    const [job] = await pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir });
-    assert.equal(job.status, 'done', job.error); assert.match(job.output, /Projet\/Test ELPO\.mov$/);
-    assert.deepEqual(log, ['quit', 'launch', 'click 400,300 double', 'shortcut command+e', 'key return', 'key escape', 'quit']);
-    assert.ok(readJson(f.metaFile).value.tm_draft_modified >= before * 1000);
-    assert.ok(readJson(f.indexFile).value.all_draft_store[0].tm_draft_modified >= before * 1000);
-    assert.equal(readJson(f.indexFile).value.all_draft_store[1].tm_duration, 12);
-  } finally { f.cleanup(); }
+test('pilote natif : action, état confirmé, fichier annoncé et ffprobe, fermeture puis quit', async () => {
+ const s=setup();try {
+  const p=new CapcutPilot({root:s.f.root,backupDir:s.f.backupDir,actions:s.actions,settings:FAST});
+  const [j]=await p.run([s.project],{exportDir:s.dir}); assert.equal(j.status,'done',j.error);
+  assert.deepEqual(s.log.filter(x=>!x.startsWith('state:')),['launch','open-project:Test ELPO','open-export','press-export','close-done','quit']);
+  assert.ok(readJson(s.f.metaFile).value.tm_draft_modified>0); assert.ok(fs.existsSync(j.report));
+  const report=readJson(j.report).value;assert.equal(report.events.find(e=>e.validation).validation.actualDuration,5);
+ }finally{s.f.cleanup();}
 });
-test('pilote : médias manquants détectés avant d’ouvrir CapCut', async () => {
-  const f = fixture();
-  try {
-    fs.unlinkSync(f.items[0].file_Path);
-    assert.deepEqual(missingMedia(f.project), ['scene-1.png']);
-    const exportDir = path.join(f.temp, 'exports'); fs.mkdirSync(exportDir);
-    const { log, actions } = fakeActions(exportDir);
-    const pilot = new CapcutPilot({ root: f.root, actions, settings: { tile: { x: 1, y: 1 }, launchSeconds: 0, openSeconds: 0, dialogSeconds: 0, stableSeconds: 0, quitSeconds: 1 } });
-    const [job] = await pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir });
-    assert.equal(job.status, 'failed'); assert.match(job.error, /introuvable/); assert.ok(!log.includes('launch'));
-    pilot.settings.missing = 'continue'; log.length = 0;
-    const [again] = await pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir });
-    assert.equal(again.status, 'done', again.error); assert.deepEqual(log.slice(1, 3), ['click 1,1 double', 'key escape']);
-    assert.equal(listVideos(exportDir).length, 1);
-  } finally { f.cleanup(); }
+test('pilote natif : médias manquants refusés sans touche aveugle',async()=>{
+ const s=setup();try{fs.unlinkSync(s.f.items[0].file_Path);assert.deepEqual(missingMedia(s.f.project),['scene-1.png']);
+ const p=new CapcutPilot({root:s.f.root,actions:s.actions,settings:FAST});const [j]=await p.run([s.project],{exportDir:s.dir});assert.equal(j.status,'failed');assert.equal(s.log.length,0);
+ }finally{s.f.cleanup();}
 });
-test('pilote : calibrage requis et projet hors dossier refusé', async () => {
-  const f = fixture();
-  try {
-    const pilot = new CapcutPilot({ root: f.root, actions: fakeActions(f.temp).actions });
-    await assert.rejects(pilot.run([{ path: f.project, name: 'x' }], { exportDir: f.temp }), e => e.code === 'PILOT_CALIBRATION');
-    assert.throws(() => bumpProject(f.root, f.temp), e => e.code === 'PROJECT_PATH');
-  } finally { f.cleanup(); }
+test('pilote natif : aucun calibrage requis, projet extérieur refusé et ffprobe obligatoire',async()=>{
+ const s=setup();try{assert.throws(()=>bumpProject(s.f.root,s.f.temp));s.actions.probeAvailable=()=>false;
+ const p=new CapcutPilot({root:s.f.root,actions:s.actions});await assert.rejects(p.run([s.project],{exportDir:s.dir}),e=>e.code==='FFPROBE_REQUIRED');assert.equal(p.controller,null);
+ }finally{s.f.cleanup();}
 });
-test('pilote : un second lancement est refusé pendant la vérification d’accessibilité', async () => {
-  const f = fixture();
-  try {
-    const exportDir = path.join(f.temp, 'exports'); fs.mkdirSync(exportDir);
-    const { actions } = fakeActions(exportDir);
-    let grant; actions.accessibility = () => new Promise(resolve => { grant = resolve; });
-    const pilot = new CapcutPilot({ root: f.root, actions, settings: { tile: { x: 1, y: 1 }, launchSeconds: 0, openSeconds: 0, dialogSeconds: 0, stableSeconds: 0, quitSeconds: 1 } });
-    const first = pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir });
-    assert.ok(pilot.controller, 'le pilotage est réservé dès l’appel');
-    await assert.rejects(pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir }), e => e.code === 'PILOT_BUSY');
-    grant(true);
-    const [job] = await first;
-    assert.equal(job.status, 'done', job.error);
-    assert.equal(pilot.controller, null);
-  } finally { f.cleanup(); }
+test('pilote natif : réservation atomique avant la vérification des autorisations',async()=>{
+ const s=setup();try{let grant;s.actions.accessibility=()=>new Promise(r=>grant=r);const p=new CapcutPilot({root:s.f.root,actions:s.actions,settings:FAST});
+ const first=p.run([s.project],{exportDir:s.dir});await assert.rejects(p.run([s.project],{exportDir:s.dir}),e=>e.code==='PILOT_BUSY');grant(false);await assert.rejects(first,e=>e.code==='ACCESSIBILITY');assert.equal(p.controller,null);
+ }finally{s.f.cleanup();}
 });
-test('pilote : un refus d’accessibilité libère la réservation', async () => {
-  const f = fixture();
-  try {
-    const { actions } = fakeActions(f.temp);
-    actions.accessibility = async () => false;
-    const pilot = new CapcutPilot({ root: f.root, actions, settings: { tile: { x: 1, y: 1 } } });
-    await assert.rejects(pilot.run([{ path: f.project, name: 'x' }], { exportDir: f.temp }), e => e.code === 'ACCESSIBILITY');
-    assert.equal(pilot.controller, null);
-  } finally { f.cleanup(); }
-});
-test('pilote : pause avant la prochaine action CapCut, reprise, puis arrêt pendant une pause', async () => {
-  const f = fixture();
-  try {
-    const exportDir = path.join(f.temp, 'exports'); fs.mkdirSync(exportDir);
-    const { log, actions } = fakeActions(exportDir);
-    const pilot = new CapcutPilot({ root: f.root, actions, settings: { tile: { x: 5, y: 5 }, launchSeconds: 0, openSeconds: 0, dialogSeconds: 0, stableSeconds: 0, quitSeconds: 1 } });
-    const events = []; pilot.on('paused', e => events.push(e.paused));
-    assert.equal(pilot.pause(), false, 'aucune pause hors pilotage');
-    const first = pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir });
-    assert.equal(pilot.pause('La souris a bougé.'), true);
-    await new Promise(r => setTimeout(r, 60));
-    assert.deepEqual(log, ['quit'], 'CapCut n’est pas relancé pendant la pause');
-    assert.equal(pilot.resume(), true);
-    const [job] = await first;
-    assert.equal(job.status, 'done', job.error); assert.ok(log.includes('launch'));
-    assert.deepEqual(events, [true, false]);
-    const second = pilot.run([{ path: f.project, name: 'Test ELPO' }], { exportDir });
-    pilot.pause(); await new Promise(r => setTimeout(r, 30)); pilot.stop();
-    const [stopped] = await second;
-    assert.equal(stopped.status, 'cancelled'); assert.equal(pilot.paused, false);
-  } finally { f.cleanup(); }
+test('pilote natif : arrêt pendant la pause, aucune prochaine action',async()=>{
+ const s=setup();try{const p=new CapcutPilot({root:s.f.root,actions:s.actions,settings:FAST});const run=p.run([s.project],{exportDir:s.dir});p.pause();p.stop();const [j]=await run;assert.equal(j.status,'cancelled');assert.equal(p.paused,false);assert.ok(!s.log.includes('press-export'));
+ }finally{s.f.cleanup();}
 });

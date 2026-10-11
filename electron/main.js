@@ -10,6 +10,7 @@ import { ExportQueue, findFfmpeg } from '../lib/export-queue.js';
 import { CapcutPilot, DEFAULT_PILOT } from '../lib/capcut-pilot.js';
 import { validFrame } from '../lib/capcut-ui.js';
 import { macActions, CAPCUT_ID } from '../lib/mac-automation.js';
+import { nativeActions } from '../lib/capcut-native.js';
 import { captureCapcutDiagnostic } from '../lib/capcut-diagnostic.js';
 import { waveform } from '../lib/waveform.js';
 import { TRAY_ICON_PNG } from './tray-icon.js';
@@ -118,8 +119,10 @@ function makePilot() {
   pilot?.stop(); pilot = null;
   // No pilot until a CapCut projects folder is open (FFmpeg can be detected before that).
   if (!initialized) return;
-  const base = macActions({ ffprobe: tool?.ffprobe, trusted: () => !mac || systemPreferences.isTrustedAccessibilityClient(false) });
-  const actions = { ...base, click: (point, double) => { automated = { x: point.x, y: point.y, at: Date.now() }; return base.click(point, double); } };
+  const actions = nativeActions({ binary: path.join(app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'dist/capcut-ax-record'), 'capcut-ax.app/Contents/MacOS/capcut-ax'),
+    ffprobe: tool?.ffprobe, trusted: () => !mac || systemPreferences.isTrustedAccessibilityClient(false),
+    onActionStart: () => { automated = { nativeActive: true, at: Date.now() }; },
+    onActionEnd: result => { const point = result?.plan?.point || screen.getCursorScreenPoint(); automated = { x: point.x, y: point.y, at: Date.now() }; } });
   pilot = new CapcutPilot({ root, backupDir: path.join(app.getPath('userData'), 'backups'), settings: settings.pilot, actions });
   pilot.on('update', jobs => { send('pilot', jobs); dock(); pilotHud(jobs); });
   pilot.on('log', line => send('pilotLog', line));
@@ -164,7 +167,7 @@ function pilotWatch(on) {
   watch = setInterval(() => {
     const now = screen.getCursorScreenPoint();
     const moved = Math.hypot(now.x - last.x, now.y - last.y) > 4;
-    const ours = automated && (Date.now() - automated.at < 1500 || (Math.abs(now.x - automated.x) <= 2 && Math.abs(now.y - automated.y) <= 2));
+    const ours = automated && (automated.nativeActive || Date.now() - automated.at < 1500 || (Math.abs(now.x - automated.x) <= 2 && Math.abs(now.y - automated.y) <= 2));
     if (moved && !ours) pilot?.pause('La souris a bougé : ELPO attend avant sa prochaine action dans CapCut.');
     last = now;
   }, 250);
@@ -409,10 +412,10 @@ else {
       if (pilotRunning() || calibrating || diagnosing || busy) throw new Error('Arrête le pilotage et attends la fin de l’opération avant le diagnostic.');
       diagnosing = true;
       try {
-        const actions = macActions();
+        const actions = nativeActions({ binary: path.join(app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'dist/capcut-ax-record'), 'capcut-ax.app/Contents/MacOS/capcut-ax') });
         if (!(await actions.isRunning())) throw new Error('Ouvre CapCut sur sa fenêtre d’export avant le diagnostic.');
         const report = await captureCapcutDiagnostic(actions, {
-          version: app.getVersion(), mode: 'correctif-export-0.6.4', platform: process.platform,
+          version: app.getVersion(), mode: 'pilote-natif-sur-releves', platform: process.platform,
           arch: process.arch, versions: process.versions,
           accessibility: systemPreferences.isTrustedAccessibilityClient(false),
           calibration: { exportButton: settings.pilot.exportButton, frames: settings.pilot.frames },

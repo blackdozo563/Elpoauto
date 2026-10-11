@@ -75,20 +75,7 @@ test('diagnostic macOS : délai, autorisation et erreur sans stderr distingués 
   assert.doesNotMatch(unknown.message, /SECRET_SCRIPT|autorisation/);
 });
 
-test('pilote : délai de lecture conservé comme erreur bloquante, sans accuser les autorisations', async () => {
-  const f = fixture();
-  try {
-    const cause = automationFailure({ killed: true, signal: 'SIGTERM' }, '', 30000);
-    const pilot = new CapcutPilot({ root: f.root, actions: { readUi: async () => { throw cause; } } });
-    await assert.rejects(pilot.readUi(), error => {
-      assert.equal(error.code, 'CAPCUT_UI');
-      assert.equal(error.cause, cause);
-      assert.match(error.message, /lecture de l’interface a dépassé le délai/);
-      assert.doesNotMatch(error.message, /Vérifie les autorisations/);
-      return true;
-    });
-  } finally { f.cleanup(); }
-});
+
 
 // ── CapCut 9 réel : éditeur chargé, feuille d’export ouverte ──────────────────────
 // Un projet réel expose des milliers de nœuds dans la timeline. Chaque événement
@@ -217,15 +204,4 @@ test('relevé du 10 octobre : les descendants de la feuille passent avant les vo
   assert.equal(ui.truncated, false);
   assert.deepEqual(exportOkPoint(ui), { x: 1028, y: 755 });
   assert.equal(exportTarget(ui), EXPORT_TARGET);
-});
-
-test('pilote : une limite de contrôles ne confirme pas la disparition du bouton final', async () => {
-  const f = fixture();
-  try {
-    const partial = { windows: [{ title: 'CapCut', frame: editorFrame, nodes: [
-      { role: 'AXTextField', description: 'ExportPathInput', value: EXPORT_TARGET },
-    ] }], timedOut: false, truncated: true };
-    const pilot = new CapcutPilot({ root: f.root, actions: { readUi: async () => partial } });
-    assert.equal(await pilot.exportAccepted(() => null, undefined, 1), 'incertain');
-  } finally { f.cleanup(); }
 });
