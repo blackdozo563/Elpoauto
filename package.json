@@ -1,15 +1,16 @@
 {
   "name": "elpo-ai-auto-capcut",
-  "version": "0.6.4",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "main": "electron/main.js",
   "description": "Montage automatique et export en lot de projets CapCut — version locale pour ELPO",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "diag:capcut": "node scripts/dump-capcut-ui.mjs",
+    "build:native": "bash tools/capcut-ax/build-helper.sh",
+    "diag:capcut": "node scripts/capcut-snapshot.mjs",
     "start": "electron .",
-    "dist:mac": "electron-builder --mac dmg --arm64 --publish never"
+    "dist:mac": "bash tools/capcut-ax/build-helper.sh && electron-builder --mac dmg --arm64 --publish never"
   },
   "author": "ELPO",
   "devDependencies": {
@@ -52,7 +53,13 @@
       "title": "ElpoAiAutoCapcut ${version}",
       "artifactName": "ElpoAiAutoCapcut-${version}-arm64.dmg"
     },
-    "afterPack": "scripts/after-pack.cjs"
+    "afterPack": "scripts/after-pack.cjs",
+    "extraFiles": [
+      {
+        "from": "build/native/capcut-ax",
+        "to": "MacOS/capcut-ax"
+      }
+    ]
   },
   "repository": {
     "type": "git",

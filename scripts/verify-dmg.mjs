@@ -47,6 +47,21 @@ try {
   const executable = path.join(copiedApp, 'Contents/MacOS', plist.CFBundleExecutable);
   assert.equal(command('/usr/bin/lipo', ['-archs', executable]).trim(), 'arm64');
   report.checks.push('arm64 executable');
+  // Native CapCut helper: present, arm64, signed, and refusing to act without CapCut.
+  const helper = path.join(copiedApp, 'Contents/MacOS/capcut-ax');
+  assert(fs.existsSync(helper), 'capcut-ax missing from Contents/MacOS');
+  assert.equal(command('/usr/bin/lipo', ['-archs', helper]).trim(), 'arm64');
+  command('/usr/bin/codesign', ['--verify', '--strict', helper]);
+  const helperRun = args => { try { return JSON.parse(command(helper, args).trim().split('\n').at(-1)); } catch (e) { return JSON.parse(String(e.stdout).trim().split('\n').at(-1)); } };
+  const version = helperRun(['--version']);
+  for (const c of ['snapshot', 'press', 'click']) assert(version.availableCommands.includes(c), `capcut-ax lacks ${c}`);
+  assert.deepEqual(version.pressable, ['ExportOkBtn', 'automationcancel', 'automationcloseBtn']);
+  assert.equal(helperRun(['--self-test']).ok, true, 'capcut-ax self-test failed');
+  const refused = helperRun(['press', '--label', 'publish_pc_btn']);
+  assert.equal(refused.ok, false); assert.equal(refused.code, 'LABEL_REFUSED'); assert.equal(refused.commandAttempted, false);
+  const snapshot = helperRun(['snapshot']);
+  assert.equal(snapshot.ok, false); assert.equal(snapshot.commandAttempted, false);
+  report.checks.push('Native CapCut helper: arm64, signed, allow-list, self-test, no action without CapCut');
 
   const server = net.createServer();
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -111,7 +126,7 @@ try {
   assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
   assert.equal(child.exitCode, null, `Application exited after startup:\n${nativeLog}`);
   report.checks.push('Native launch, rendered interface, preload and main-process IPC');
-  report.capcut = 'CapCut 9.3.0 and user calibration not exercised on CI';
+  report.capcut = 'CapCut 9.3.0 not exercised on CI (no CapCut, no Accessibility permission on the runner)';
   fs.writeFileSync(path.join(path.dirname(dmg), 'dmg-validation.json'), JSON.stringify(report, null, 2) + '\n');
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {

@@ -356,24 +356,21 @@
       </div>
       <div class="panel">
         <div class="panel-head"><h3>Pilotage de CapCut</h3><span id="accessState" class="pill">Accessibilité : à vérifier</span></div>
-        <div class="calib-row"><div><strong>Bouton « Accueil » de CapCut</strong><span id="homePoint" class="hint">Détection automatique, ou viser le bouton dans la barre de gauche</span></div><button class="btn" data-calibrate="home"><svg class="ico"><use href="#i-target"/></svg>Viser</button></div>
-        <div class="calib-row"><div><strong>Première vignette de l’accueil</strong><span id="tilePoint" class="hint">Pas encore visée</span></div><button class="btn" data-calibrate="tile"><svg class="ico"><use href="#i-target"/></svg>Viser</button></div>
-        <div class="calib-row"><div><strong>Bouton « Exporter » de la fenêtre d’export</strong><span id="exportPoint" class="hint">Touche Entrée utilisée</span></div><button class="btn" data-calibrate="exportButton"><svg class="ico"><use href="#i-target"/></svg>Viser</button><button id="clearExportPoint" class="link">Utiliser Entrée</button></div>
+        <div class="calib-row"><div><strong>Outil natif de pilotage</strong><span id="nativeState" class="hint">Vérifié au lancement du lot</span></div></div>
         <div class="calib-row"><div><strong>Dossier d’export de CapCut</strong><span id="capcutExportDir" class="hint path">Non choisi</span></div><button id="chooseCapcutDir" class="btn">Choisir</button></div>
         <div class="form-grid tight">
-          <label>Ouverture du projet<select id="pOpenWith"><option value="double">Double-clic</option><option value="single">Simple clic</option></select></label>
-          <label>Lancement CapCut (s)<input id="pLaunch" type="number" min="3" max="90"></label>
-          <label>Ouverture projet (s)<input id="pOpen" type="number" min="2" max="90"></label>
-          <label>Fenêtre d’export (s)<input id="pDialog" type="number" min="2" max="60"></label>
-          <label>Fichier stable (s)<input id="pStable" type="number" min="2" max="60"></label>
-          <label>Délai max (min)<input id="pTimeout" type="number" min="1" max="600"></label>
-          <label>Médias manquants<select id="pMissing"><option value="skip">Ignorer le projet</option><option value="continue">Exporter quand même</option></select></label>
-          <label>Après l’export<select id="pClose"><option value="escape">Échap puis quitter</option><option value="escape,escape">Échap deux fois puis quitter</option><option value="">Quitter directement</option></select></label>
+          <label>Lancement de CapCut, max (s)<input id="pLaunch" type="number" min="10" max="180"></label>
+          <label>Ouverture du projet, max (s)<input id="pOpen" type="number" min="5" max="120"></label>
+          <label>Réglages d’export, max (s)<input id="pDialog" type="number" min="5" max="60"></label>
+          <label>Démarrage de l’export, max (s)<input id="pStart" type="number" min="5" max="120"></label>
+          <label>Fichier stable (s)<input id="pStable" type="number" min="1" max="30"></label>
+          <label>Export bloqué après (min)<input id="pStall" type="number" min="1" max="60"></label>
+          <label>Durée max d’un export (min)<input id="pTimeout" type="number" min="5" max="600"></label>
         </div>
         <div class="button-row"><button id="pilotAccess" class="btn ghost">Autoriser l’accessibilité</button><button id="pilotSave" class="btn">Enregistrer</button></div>
         <div class="button-row"><button id="pilotDiagnostic" class="btn ghost">Enregistrer le diagnostic CapCut</button><span id="pilotDiagnosticState" class="hint" role="status"></span></div>
-        <p class="hint">Diagnostic : arrête le lot, ouvre manuellement la fenêtre d’export dans CapCut, puis enregistre le relevé. La lecture peut prendre une minute. Le fichier contient les noms et chemins des projets ; il reste sur ton Mac. Aucun clic ni raccourci n’est envoyé à CapCut.</p>
-        <p class="hint">Dans CapCut, trie l’accueil « Projets » par date de modification, puis vise la première vignette et le bouton Exporter (le champ Nom de la fenêtre d’export peut garder le focus). Cycle par projet : fermeture de CapCut, projet placé en tête de la liste, lancement, ouverture de la première vignette, ⌘E puis Exporter, attente d’un fichier complet, fermeture de la fenêtre de fin d’export, sortie de CapCut.</p>
+        <p class="hint">Diagnostic : CapCut ouvert sur la page à examiner, ELPO enregistre ce que CapCut expose à macOS (lecture seule, aucun clic). Le fichier contient les noms et chemins des projets ; il reste sur ton Mac.</p>
+        <p class="hint">Aucune visée ni calibrage : ELPO lit CapCut par ses identifiants internes. Pour chaque projet : fermeture de CapCut, projet placé en tête de l’accueil, lancement, ouverture du projet, réglages d’export, contrôle du nom et du dossier annoncés, Exporter, suivi de la progression, vidéo vérifiée par FFprobe, « Fermer », sortie de CapCut. Les délais sont des maxima : ELPO avance dès que CapCut est prêt.</p>
       </div>
       <div class="panel">
         <div class="panel-head"><h3>Styles enregistrés</h3></div>

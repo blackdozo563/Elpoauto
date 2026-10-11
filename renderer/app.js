@@ -22,7 +22,7 @@ let scenesFile = null, srtFile = null, transitions = [], transitionIds = new Set
 let syncPlan = null, syncPage = 0, mediaUrls = {}, playback = null, activeClip = null, raf = 0, playGeneration = 0;
 let projects = [], selected = new Set(), libraryFilter = 'all', status = {}, styles = {}, favorites = { transitions: [], effects: [], filters: [] };
 let library = { transitions: [], effects: [], filters: [] }, fxKind = 'transitions', fxShow = null, batchEngine = 'auto', singleEngine = 'elpo';
-let exportJobs = [], pilotJobs = [], pilotSettings = {}, ffmpeg = null, focusScene = -1, ribbonZoom = 1, waveCache = new Map(), built = false;
+let exportJobs = [], pilotJobs = [], pilotSettings = {}, nativeOk = null, ffmpeg = null, focusScene = -1, ribbonZoom = 1, waveCache = new Map(), built = false;
 const pageSize = 12;
 // Each page: [eyebrow, title]. Mode 1 is the Plateau, mode 2 the Salle de rendu.
 const PAGES = { library: ['Tous tes projets CapCut', 'Projets'], build: ['Mode 1 · Montage complet', 'Plateau'], batch: ['Mode 2 · Production en lot', 'Salle de rendu'],
@@ -672,10 +672,10 @@ async function saveExportSettings() { await unwrap(api.exportSettings(exportSett
 async function startExport(list, engineName, test = false, { confirmed = false } = {}) {
   if (!list.length) throw new Error('Aucun projet à exporter.');
   if (engineName === 'capcut') {
-    if (!pilotSettings.tile) { go('settings'); throw new Error('Vise d’abord la première vignette de l’accueil CapCut : Réglages, Pilotage de CapCut, bouton « Viser ».'); }
+    if (nativeOk === false) { go('settings'); throw new Error('L’outil natif de pilotage est absent : réinstalle ElpoAiAutoCapcut depuis le DMG.'); }
     if (!pilotSettings.exportDir) { go('settings'); throw new Error('Indique le dossier d’export utilisé par CapCut (Réglages).'); }
     if (!confirmed && !(await ask(test ? 'Tester le pilotage sur un projet ?' : `Exporter ${plural(list.length, 'projet')} avec CapCut ?`, [
-      el('p', 'ELPO va fermer et relancer CapCut, ouvrir chaque projet, lancer l’export puis revenir à la liste des projets. N’utilise pas le clavier ni la souris pendant le lot.'),
+      el('p', 'Pour chaque projet, ELPO ferme et relance CapCut, ouvre le projet, vérifie le nom et le dossier annoncés par CapCut, lance l’export, attend la vidéo vérifiée puis passe au suivant. Ne touche pas à la souris pendant le lot.'),
       el('p', 'Pour arrêter : bouton Tout arrêter, ou ⌘Q dans ELPO après l’export en cours.')], 'Démarrer'))) return false;
     await unwrap(api.pilotStart({ projects: list.map(p => ({ path: p.path, name: p.name })), test }));
     notice('Pilotage de CapCut démarré.');
@@ -698,9 +698,9 @@ async function startAutoExport(list) {
   if (!elpoList.length && !capcutList.length) throw new Error('Aucune timeline à exporter dans la sélection.');
   const rows = capcutList.map(p => { const row = el('div', undefined, 'modal-row'), info = el('div'); info.append(el('strong', p.name), el('p', `Via CapCut : ${routes.get(p.path).reasons.join(', ')}.`)); row.append(icon('fx'), info); return row; });
   const intro = el('p', `${plural(elpoList.length, 'projet')} avec ELPO en arrière-plan · ${plural(capcutList.length, 'projet')} via CapCut pour un rendu identique.`);
-  if (capcutList.length && (!pilotSettings.tile || !pilotSettings.exportDir)) {
+  if (capcutList.length && (!pilotSettings.exportDir || nativeOk === false)) {
     // The pilot is not set up: export those projects with ELPO anyway (without these elements), or leave them out.
-    const anyway = await ask('Pilotage CapCut pas encore prêt', [intro, ...rows, el('p', 'Pour exporter ces projets à l’identique, vise la vignette de CapCut dans « Pilotage prêt ? ». Sinon, ELPO peut les exporter sans ces éléments.')], 'Exporter avec ELPO quand même', 'Les laisser de côté');
+    const anyway = await ask('Pilotage CapCut pas encore prêt', [intro, ...rows, el('p', 'Pour exporter ces projets à l’identique, choisis le dossier d’export de CapCut dans « Pilotage prêt ? ». Sinon, ELPO peut les exporter sans ces éléments.')], 'Exporter avec ELPO quand même', 'Les laisser de côté');
     if (anyway) elpoList.push(...capcutList);
     capcutList.length = 0;
     if (!elpoList.length) return false;
@@ -757,13 +757,11 @@ function renderBatch() {
 let pilotAccessOk = null;
 function renderPilotState() {
   const p = pilotSettings;
-  $('homePoint').textContent = p.home ? `x ${p.home.x}, y ${p.home.y}` : 'Détection automatique, ou viser le bouton dans la barre de gauche';
   const items = [
     [pilotAccessOk === true, pilotAccessOk === true ? 'Accessibilité autorisée' : 'Autorise ELPO à piloter CapCut (Accessibilité de macOS)', pilotAccessOk === true ? null : ['Autoriser', () => $('pilotAccess').onclick()]],
     [!!p.exportDir, p.exportDir ? `Exports CapCut : ${p.exportDir}` : 'Indique le dossier où CapCut enregistre ses vidéos', [p.exportDir ? 'Changer' : 'Choisir', () => $('chooseCapcutDir').onclick()]],
-    [!!p.tile, p.tile ? 'Première vignette de l’accueil visée' : 'Vise la première vignette de l’accueil de CapCut', [p.tile ? 'Viser à nouveau' : 'Viser', () => aim('tile')]],
-    [!!p.exportButton, p.exportButton ? 'Bouton « Exporter » visé' : 'Bouton « Exporter » : ELPO appuie sur Entrée (viser est plus sûr)', [p.exportButton ? 'Viser à nouveau' : 'Viser', () => aim('exportButton')]],
-    [true, p.missing === 'continue' ? 'Médias manquants : export malgré la fenêtre « Relier »' : 'Projets aux médias manquants laissés de côté', null]];
+    [nativeOk !== false, nativeOk === false ? 'Outil natif de pilotage absent : réinstalle ElpoAiAutoCapcut' : 'Pilotage natif : aucune visée, CapCut lu par ses identifiants', null],
+    [true, 'Projets aux médias manquants laissés de côté (relie-les dans CapCut)', null]];
   $('pilotState').replaceChildren(...items.map(([okay, text, action]) => {
     const d = el('div'); d.append(el('span', undefined, `dot ${okay ? 'ok' : 'warn'}`), el('span', text));
     if (action) { const b = el('button', action[0], 'btn ghost small'); b.onclick = action[1]; d.append(b); }
@@ -968,20 +966,17 @@ function renderFfmpeg() {
 function renderSettings() {
   renderFfmpeg(); renderStyles();
   const p = pilotSettings;
-  $('tilePoint').textContent = p.tile ? `x ${p.tile.x}, y ${p.tile.y}` : 'Pas encore visée';
-  $('exportPoint').textContent = p.exportButton ? `x ${p.exportButton.x}, y ${p.exportButton.y}` : 'Touche Entrée utilisée';
   $('capcutExportDir').textContent = p.exportDir || 'Non choisi';
-  for (const [id, key] of [['pOpenWith', 'openWith'], ['pLaunch', 'launchSeconds'], ['pOpen', 'openSeconds'], ['pDialog', 'dialogSeconds'], ['pStable', 'stableSeconds'], ['pTimeout', 'timeoutMinutes'], ['pMissing', 'missing']]) if (p[key] !== undefined) $(id).value = p[key];
-  if (Array.isArray(p.closeKeys)) $('pClose').value = p.closeKeys.join(',');
+  $('nativeState').textContent = nativeOk === false ? 'Absent : réinstalle ElpoAiAutoCapcut depuis le DMG' : nativeOk ? 'Présent : CapCut est lu et piloté par ses identifiants, sans visée' : 'Vérifié au lancement du lot';
+  for (const [id, key] of [['pLaunch', 'launchSeconds'], ['pOpen', 'openSeconds'], ['pDialog', 'dialogSeconds'], ['pStart', 'startSeconds'], ['pStable', 'stableSeconds'], ['pStall', 'stallMinutes'], ['pTimeout', 'timeoutMinutes']]) if (p[key] !== undefined) $(id).value = p[key];
 }
 $('ffmpegDetect').onclick = () => task(async () => { ffmpeg = await unwrap(api.ffmpeg({})); renderFfmpeg(); notice(ffmpeg ? 'FFmpeg trouvé.' : 'FFmpeg toujours introuvable.', !ffmpeg); });
 $('ffmpegChoose').onclick = () => task(async () => { ffmpeg = await unwrap(api.ffmpeg({ choose: true })); renderFfmpeg(); });
 async function savePilot(extra = {}) {
-  pilotSettings = await unwrap(api.pilotSettings({ ...pilotSettings, openWith: $('pOpenWith').value, launchSeconds: $('pLaunch').value, openSeconds: $('pOpen').value, dialogSeconds: $('pDialog').value, stableSeconds: $('pStable').value, timeoutMinutes: $('pTimeout').value, missing: $('pMissing').value, closeKeys: $('pClose').value ? $('pClose').value.split(',') : [], ...extra }));
+  pilotSettings = await unwrap(api.pilotSettings({ ...pilotSettings, launchSeconds: $('pLaunch').value, openSeconds: $('pOpen').value, dialogSeconds: $('pDialog').value, startSeconds: $('pStart').value, stableSeconds: $('pStable').value, stallMinutes: $('pStall').value, timeoutMinutes: $('pTimeout').value, ...extra }));
   renderSettings(); renderPilotState();
 }
 $('pilotSave').onclick = () => task(async () => { await savePilot(); notice('Réglages du pilotage enregistrés.'); });
-$('clearExportPoint').onclick = () => task(() => savePilot({ exportButton: null }));
 $('chooseCapcutDir').onclick = () => task(async () => { const dir = await unwrap(api.chooseDir({ purpose: 'capcut' })); if (dir) await savePilot({ exportDir: dir }); });
 $('pilotAccess').onclick = () => task(async () => { const okay = await unwrap(api.pilotAccess()); pilotAccessOk = okay; renderPilotState(); $('accessState').textContent = okay ? 'Accessibilité autorisée' : 'Accessibilité à autoriser'; $('accessState').className = `pill ${okay ? 'green' : 'red'}`; if (!okay) notice('Coche ElpoAiAutoCapcut dans Réglages Système → Confidentialité et sécurité → Accessibilité, puis réessaie.'); });
 $('pilotDiagnostic').onclick = () => task(async () => {
@@ -994,16 +989,6 @@ $('pilotDiagnostic').onclick = () => task(async () => {
     throw error;
   }
 });
-// A full-screen sight opens over CapCut: one click records the point, Escape cancels.
-function aim(target) {
-  return task(async () => {
-    const next = await unwrap(api.pilotCalibrate(target));
-    if (next) { pilotSettings = next; notice('Position enregistrée.'); } else notice('Visée annulée : position inchangée.');
-    renderSettings(); renderPilotState();
-  });
-}
-document.querySelectorAll('[data-calibrate]').forEach(b => b.onclick = () => aim(b.dataset.calibrate));
-
 // ── Command palette & keyboard ────────────────────────────────────────────────────
 function commands() {
   const list = [
@@ -1017,7 +1002,7 @@ function commands() {
     ['Production en lot : exporter les projets cochés', '', () => { $('batchBuild').checked = false; $('batchExport').checked = true; go('batch'); }],
     ['Exporter le projet actif', '', () => { step('deliver'); if (!$('exportOne').disabled) $('exportOne').onclick(); }],
     ['Générer dans CapCut', '', () => step('deliver')], ['Bibliothèque : mes favoris', '', () => { fxShow = 'favorites'; go('fx'); }],
-    ['Viser les cibles du pilotage CapCut', '', () => go('settings')], ['Vidéos exportées', '', () => go('vault')], ['Ouvrir CapCut', '⇧⌘O', () => $('openCapcut').onclick()], ['Changer le dossier des projets', '', () => $('chooseRoot').onclick()],
+    ['Réglages du pilotage CapCut', '', () => go('settings')], ['Vidéos exportées', '', () => go('vault')], ['Ouvrir CapCut', '⇧⌘O', () => $('openCapcut').onclick()], ['Changer le dossier des projets', '', () => $('chooseRoot').onclick()],
     ['Actualiser les projets', '', () => $('refresh').onclick()], ['Actualiser la bibliothèque', '', () => $('fxRefresh').onclick()],
   ];
   for (const p of projects.slice(0, 200)) list.push([`Ouvrir « ${p.name} »`, 'Projet', () => openProject(p.path)]);
@@ -1111,7 +1096,7 @@ async function start() {
   status = await unwrap(api.status());
   if (status.platform === 'darwin') { document.body.classList.add('vibrant'); window.elpoMenu = true; }
   showRoot(status.root); preferences = status.preferences || {}; styles = status.styles || {};
-  favorites = { transitions: [], effects: [], filters: [], ...(status.favorites || {}) }; pilotSettings = status.pilot || {}; ffmpeg = status.ffmpeg || null;
+  favorites = { transitions: [], effects: [], filters: [], ...(status.favorites || {}) }; pilotSettings = status.pilot || {}; nativeOk = status.native ? !!status.native.available : null; ffmpeg = status.ffmpeg || null;
   if (typeof status.access === 'boolean') pilotAccessOk = status.access;
   if (status.version) $('version').textContent = `v${status.version}`;
   applyStyle(preferences); applyExportSettings(status.exportSettings || {}); renderStyles(); renderFfmpeg(); renderMotions(); placementHint();

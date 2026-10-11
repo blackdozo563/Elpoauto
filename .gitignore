@@ -8,4 +8,6 @@ downloads/
 runtime/
 *.dmg
 capcut-ui-*.json
+capcut-ax-*.json
 .scratch/
+build/native/

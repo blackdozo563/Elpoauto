@@ -8,9 +8,8 @@ import { atomicWrite, readJson } from '../lib/storage.js';
 import { MediaServer } from '../lib/media-server.js';
 import { ExportQueue, findFfmpeg } from '../lib/export-queue.js';
 import { CapcutPilot, DEFAULT_PILOT } from '../lib/capcut-pilot.js';
-import { validFrame } from '../lib/capcut-ui.js';
 import { macActions, CAPCUT_ID } from '../lib/mac-automation.js';
-import { captureCapcutDiagnostic } from '../lib/capcut-diagnostic.js';
+import { nativeDriver } from '../lib/capcut-native.js';
 import { waveform } from '../lib/waveform.js';
 import { TRAY_ICON_PNG } from './tray-icon.js';
 
@@ -20,7 +19,6 @@ app.setName('ElpoAiAutoCapcut');
 const mac = process.platform === 'darwin';
 const page = fileURLToPath(new URL('../renderer/index.html', import.meta.url));
 const hudPage = fileURLToPath(new URL('../renderer/hud.html', import.meta.url));
-const aimPage = fileURLToPath(new URL('../renderer/aim.html', import.meta.url));
 const overlayPreload = fileURLToPath(new URL('./preload-overlay.cjs', import.meta.url));
 let window, worker, root, busy = false, sequence = 0, initialized = false, workerFailed = false;
 const calls = new Map();
@@ -54,6 +52,32 @@ const ok = result => ({ ok: true, result });
 const send = (type, data) => { if (window && !window.isDestroyed()) window.webContents.send('elpo:event', { type, data }); };
 const saveSettings = () => atomicWrite(settingsPath, Buffer.from(JSON.stringify({ root, ...settings })));
 const pilotRunning = () => !!pilot?.controller;
+// The native helper ships next to the app's executable (Contents/MacOS/capcut-ax); in
+// development it is built by `npm run build:native`.
+const helperPath = () => app.isPackaged ? path.join(path.dirname(app.getPath('exe')), 'capcut-ax') : fileURLToPath(new URL('../build/native/capcut-ax', import.meta.url));
+function makeDriver() {
+  const base = nativeDriver({ binary: helperPath() });
+  // The helper moves the pointer for its two clicks per project (the tile, the editor's
+  // « Exporter »): the pause-on-mouse watch must not take them for the user's hand.
+  // The HUD is hidden during a click: the helper checks that the element under the
+  // point belongs to CapCut, and the HUD floats above CapCut's title bar.
+  return { ...base, click: async args => {
+    automated = { x: Math.round(args.x), y: Math.round(args.y), at: Date.now(), until: Date.now() + 8000 };
+    const hudShown = !!hud && !hud.isDestroyed() && hud.isVisible();
+    if (hudShown) hud.hide();
+    try { return await base.click(args); }
+    finally {
+      automated = { ...automated, at: Date.now(), until: Date.now() + 1500 };
+      if (hudShown && hudState && hud && !hud.isDestroyed()) hud.showInactive();
+    }
+  } };
+}
+// Settings saved by 0.6.x carried calibrated points and short fixed delays: only the
+// CapCut export folder is kept, the delays become the new maxima.
+function pilotSettingsFrom(saved = {}) {
+  if (saved?.version === DEFAULT_PILOT.version) return { ...DEFAULT_PILOT, ...saved };
+  return { ...DEFAULT_PILOT, exportDir: typeof saved?.exportDir === 'string' ? saved.exportDir : null };
+}
 const movies = () => { try { return app.getPath('movies'); } catch { return app.getPath('home'); } };
 
 async function selectRoot(dir) {
@@ -118,9 +142,8 @@ function makePilot() {
   pilot?.stop(); pilot = null;
   // No pilot until a CapCut projects folder is open (FFmpeg can be detected before that).
   if (!initialized) return;
-  const base = macActions({ ffprobe: tool?.ffprobe, trusted: () => !mac || systemPreferences.isTrustedAccessibilityClient(false) });
-  const actions = { ...base, click: (point, double) => { automated = { x: point.x, y: point.y, at: Date.now() }; return base.click(point, double); } };
-  pilot = new CapcutPilot({ root, backupDir: path.join(app.getPath('userData'), 'backups'), settings: settings.pilot, actions });
+  const actions = macActions({ ffprobe: tool?.ffprobe, trusted: () => !mac || systemPreferences.isTrustedAccessibilityClient(false) });
+  pilot = new CapcutPilot({ root, backupDir: path.join(app.getPath('userData'), 'backups'), settings: settings.pilot, actions, driver: makeDriver() });
   pilot.on('update', jobs => { send('pilot', jobs); dock(); pilotHud(jobs); });
   pilot.on('log', line => send('pilotLog', line));
   pilot.on('paused', state => { send('pilotPaused', state); if (hudState) showHud({ ...hudState, paused: state.paused, reason: state.reason }); });
@@ -164,38 +187,12 @@ function pilotWatch(on) {
   watch = setInterval(() => {
     const now = screen.getCursorScreenPoint();
     const moved = Math.hypot(now.x - last.x, now.y - last.y) > 4;
-    const ours = automated && (Date.now() - automated.at < 1500 || (Math.abs(now.x - automated.x) <= 2 && Math.abs(now.y - automated.y) <= 2));
+    const ours = automated && (Date.now() < (automated.until || automated.at + 1500) || (Math.abs(now.x - automated.x) <= 2 && Math.abs(now.y - automated.y) <= 2));
     if (moved && !ours) pilot?.pause('La souris a bougé : ELPO attend avant sa prochaine action dans CapCut.');
     last = now;
   }, 250);
 }
 
-// Aiming sight: transparent window over the display under the pointer. Resolves with the point, or null.
-function aimAt(target) {
-  return new Promise(resolve => {
-    const b = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).bounds;
-    const sight = new BrowserWindow({ x: b.x, y: b.y, width: b.width, height: b.height, frame: false, transparent: true, resizable: false, movable: false, skipTaskbar: true,
-      hasShadow: false, alwaysOnTop: true, enableLargerThanScreen: true, show: false,
-      webPreferences: { preload: overlayPreload, contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false } });
-    sight.setAlwaysOnTop(true, 'screen-saver'); sight.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    sight.webContents.setWindowOpenHandler(() => ({ action: 'deny' })); sight.webContents.on('will-navigate', e => e.preventDefault());
-    let done = false;
-    const finish = point => {
-      if (done) return; done = true;
-      ipcMain.removeListener('overlay:aimed', aimed); ipcMain.removeListener('overlay:cancel', cancel);
-      if (!sight.isDestroyed()) sight.destroy();
-      resolve(point);
-    };
-    const mine = event => event.sender === sight.webContents;
-    // The point is the real cursor position, read here rather than trusted from the page.
-    const aimed = event => { if (mine(event)) { const p = screen.getCursorScreenPoint(); finish({ x: Math.round(p.x), y: Math.round(p.y) }); } };
-    const cancel = event => { if (mine(event)) finish(null); };
-    ipcMain.on('overlay:aimed', aimed); ipcMain.on('overlay:cancel', cancel);
-    sight.on('closed', () => finish(null));
-    sight.webContents.once('did-finish-load', () => { sight.webContents.send('overlay:state', { target }); sight.show(); sight.focus(); });
-    sight.loadFile(aimPage);
-  });
-}
 async function prepareTools() {
   tool = await findFfmpeg(settings.ffmpegPath);
   queue = new ExportQueue({ tool, plan: project => engineResult('renderPlan', { project }) });
@@ -221,12 +218,12 @@ else {
     protocol.handle('elpo-media', request => media.handle(request));
     settingsPath = path.join(app.getPath('userData'), 'settings.json');
     fs.mkdirSync(app.getPath('userData'), { recursive: true });
-    try { const saved = readJson(settingsPath, 4e6).value; root = saved.root; for (const k of Object.keys(settings)) if (saved[k] !== undefined) settings[k] = saved[k]; settings.pilot = { ...DEFAULT_PILOT, ...settings.pilot }; } catch { /* first launch */ }
+    try { const saved = readJson(settingsPath, 4e6).value; root = saved.root; for (const k of Object.keys(settings)) if (saved[k] !== undefined) settings[k] = saved[k]; settings.pilot = pilotSettingsFrom(settings.pilot); } catch { /* first launch */ }
     root ||= defaultRoot(); startWorker(); await prepareTools();
     if (fs.existsSync(root)) await selectRoot(root);
     menu();
 
-    register('elpo:status', async () => { const r = await invoke('running'); return ok({ root, initialized, preferences: settings.preferences, styles: settings.styles, favorites: settings.favorites, exportSettings: settings.exportSettings, pilot: settings.pilot, subtitles: settings.subtitles, history: settings.history.slice(0, 100), version: app.getVersion(), platform: process.platform, running: r.ok ? r.result : 'unknown', ffmpeg: tool, moviesDir: movies(), access: !mac || systemPreferences.isTrustedAccessibilityClient(false) }); });
+    register('elpo:status', async () => { const r = await invoke('running'); return ok({ root, initialized, preferences: settings.preferences, styles: settings.styles, favorites: settings.favorites, exportSettings: settings.exportSettings, pilot: settings.pilot, subtitles: settings.subtitles, history: settings.history.slice(0, 100), version: app.getVersion(), platform: process.platform, running: r.ok ? r.result : 'unknown', ffmpeg: tool, moviesDir: movies(), access: !mac || systemPreferences.isTrustedAccessibilityClient(false), native: { available: fs.existsSync(helperPath()) } }); });
     register('elpo:chooseRoot', async () => {
       if (busy || pilotRunning()) throw new Error('Une opération est en cours.');
       const picked = await dialog.showOpenDialog(window, { title: 'Dossier contenant les projets CapCut', properties: ['openDirectory'], defaultPath: fs.existsSync(root) ? root : movies() });
@@ -391,37 +388,36 @@ else {
       if (pilotRunning()) throw new Error('Pilotage en cours.');
       if (value) {
         const n = (v, min, max, d) => Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Number(v))) : d;
-        const point = v => v && Number.isFinite(v.x) && Number.isFinite(v.y) ? { x: Math.round(v.x), y: Math.round(v.y) } : null;
-        settings.pilot = { ...settings.pilot, home: point(value.home) ?? settings.pilot.home, tile: point(value.tile) ?? settings.pilot.tile, exportButton: value.exportButton === null ? null : point(value.exportButton) ?? settings.pilot.exportButton,
-          openWith: value.openWith === 'single' ? 'single' : 'double', exportDir: typeof value.exportDir === 'string' ? value.exportDir : settings.pilot.exportDir,
-          launchSeconds: n(value.launchSeconds, 3, 90, 12), openSeconds: n(value.openSeconds, 2, 90, 8), dialogSeconds: n(value.dialogSeconds, 2, 60, 10),
-          stableSeconds: n(value.stableSeconds, 2, 60, 4), timeoutMinutes: n(value.timeoutMinutes, 1, 600, 60), quitSeconds: n(value.quitSeconds, 5, 120, 25),
-          missing: value.missing === 'continue' ? 'continue' : 'skip',
-          closeKeys: Array.isArray(value.closeKeys) ? value.closeKeys.filter(k => ['escape', 'return'].includes(k)).slice(0, 3) : settings.pilot.closeKeys };
+        const d = DEFAULT_PILOT, p = settings.pilot;
+        settings.pilot = { ...p, version: d.version, exportDir: typeof value.exportDir === 'string' ? value.exportDir : p.exportDir,
+          launchSeconds: n(value.launchSeconds, 10, 180, d.launchSeconds), openSeconds: n(value.openSeconds, 5, 120, d.openSeconds),
+          dialogSeconds: n(value.dialogSeconds, 5, 60, d.dialogSeconds), startSeconds: n(value.startSeconds, 5, 120, d.startSeconds),
+          stableSeconds: n(value.stableSeconds, 1, 30, d.stableSeconds), stallMinutes: n(value.stallMinutes, 1, 60, d.stallMinutes),
+          timeoutMinutes: n(value.timeoutMinutes, 5, 600, d.timeoutMinutes), quitSeconds: n(value.quitSeconds, 5, 120, d.quitSeconds) };
         saveSettings(); makePilot();
       }
       return ok(settings.pilot);
     });
     register('elpo:pilotAccess', async () => ok(!mac || systemPreferences.isTrustedAccessibilityClient(true)));
-    let calibrating = false, diagnosing = false;
+    let diagnosing = false;
+    // Native reading of what CapCut shows right now (every node, every AX read), saved
+    // as JSON to attach to a report. Read only: nothing is pressed or clicked.
     register('elpo:pilotDiagnostic', async () => {
       if (!mac) throw new Error('Ce diagnostic nécessite macOS et CapCut ouvert.');
-      if (pilotRunning() || calibrating || diagnosing || busy) throw new Error('Arrête le pilotage et attends la fin de l’opération avant le diagnostic.');
+      if (pilotRunning() || diagnosing || busy) throw new Error('Arrête le pilotage et attends la fin de l’opération avant le diagnostic.');
       diagnosing = true;
       try {
-        const actions = macActions();
-        if (!(await actions.isRunning())) throw new Error('Ouvre CapCut sur sa fenêtre d’export avant le diagnostic.');
-        const report = await captureCapcutDiagnostic(actions, {
-          version: app.getVersion(), mode: 'correctif-export-0.6.4', platform: process.platform,
-          arch: process.arch, versions: process.versions,
-          accessibility: systemPreferences.isTrustedAccessibilityClient(false),
-          calibration: { exportButton: settings.pilot.exportButton, frames: settings.pilot.frames },
-          displays: screen.getAllDisplays().map(({ bounds, scaleFactor }) => ({ bounds, scaleFactor })),
-          log: pilot?.log.slice(-120) || [],
-        });
+        const driver = makeDriver();
+        if (!driver.available()) throw Object.assign(new Error('L’outil natif capcut-ax est absent de l’application : réinstalle ElpoAiAutoCapcut.'), { code: 'NATIVE_MISSING' });
+        const at = new Date().toISOString();
+        const report = { schema: 2, at, app: { version: app.getVersion(), platform: process.platform, arch: process.arch, accessibility: systemPreferences.isTrustedAccessibilityClient(false) },
+          displays: screen.getAllDisplays().map(({ bounds, scaleFactor }) => ({ bounds, scaleFactor })), pilot: settings.pilot, log: pilot?.log.slice(-120) || [] };
+        for (const [key, read] of [['helper', () => driver.version()], ['snapshot', () => driver.snapshot()], ['state', () => driver.state()]]) {
+          try { report[key] = await read(); } catch (error) { report[key] = { error: { code: error.code ?? null, message: error.message } }; }
+        }
         const { canceled, filePath } = await dialog.showSaveDialog(window, {
           title: 'Enregistrer le diagnostic CapCut',
-          defaultPath: path.join(app.getPath('desktop'), `diagnostic-capcut-${report.at.replace(/[:.]/g, '-')}.json`),
+          defaultPath: path.join(app.getPath('desktop'), `diagnostic-capcut-${at.replace(/[:.]/g, '-')}.json`),
           filters: [{ name: 'Diagnostic JSON', extensions: ['json'] }],
         });
         if (canceled || !filePath) return ok(null);
@@ -429,33 +425,8 @@ else {
         return ok({ file: filePath });
       } finally { diagnosing = false; }
     });
-    register('elpo:pilotCalibrate', async target => {
-      if (!['home', 'tile', 'exportButton'].includes(target)) throw new Error('Cible inconnue.');
-      if (pilotRunning()) throw new Error('Pilotage en cours : attends sa fin avant de viser.');
-      if (calibrating) throw new Error('Une visée est déjà en cours.');
-      if (diagnosing) throw new Error('Diagnostic en cours.');
-      calibrating = true;
-      try {
-        // CapCut comes to the front when it is open, then the sight covers the screen.
-        let frame = null;
-        if (mac) {
-          const actions = macActions();
-          if (!(await actions.isRunning())) throw new Error('Ouvre CapCut sur la page de la cible avant de viser.');
-          await actions.activate();
-          frame = await actions.windowFrame();
-          if (!validFrame(frame)) throw new Error('Fenêtre CapCut introuvable. Quitte le plein écran puis réessaie.');
-        }
-        const point = await aimAt(target);
-        window?.show(); window?.focus();
-        if (!point) return ok(null);
-        if (pilotRunning()) throw new Error('Un pilotage a démarré pendant la visée : position non enregistrée.');
-        if (frame && (point.x < frame.x || point.y < frame.y || point.x >= frame.x + frame.width || point.y >= frame.y + frame.height)) throw new Error('La cible doit être à l’intérieur de la fenêtre CapCut.');
-        settings.pilot = { ...settings.pilot, [target]: point, frames: { ...settings.pilot.frames, [target]: frame } }; saveSettings(); makePilot();
-        return ok(settings.pilot);
-      } finally { calibrating = false; }
-    });
     register('elpo:pilotStart', async ({ projects, test = false } = {}) => {
-      if (diagnosing || calibrating) throw new Error('Attends la fin du diagnostic ou de la visée avant de lancer le pilotage.');
+      if (diagnosing) throw new Error('Attends la fin du diagnostic avant de lancer le pilotage.');
       if (busy) throw new Error('Une écriture ELPO est en cours.');
       if (pilotRunning()) throw new Error('Un pilotage CapCut est déjà en cours.');
       if (!pilot) throw new Error('Choisis le dossier de projets CapCut.');
